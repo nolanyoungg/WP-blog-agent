@@ -33,7 +33,7 @@ npm test
 
 `once` handles valid outstanding replies then claims/generates at most one row. `worker` repeats at `POLL_INTERVAL_MS`. Dry-run still uses the real configured LM Studio instance and updates only the supplied tracker/draft, but never sends an iMessage or posts to WordPress. Always use a copy when dry-running.
 
-Markdown source is saved unchanged under `data/drafts/`; JSONL logs are under `data/runs/`. The content is converted to WordPress HTML only at posting time. WordPress post lookup by slug prevents duplicate posting after restart; post ID/URL/date are stored only after WordPress confirms the response.
+Markdown source is saved under `data/drafts/`; JSONL logs are under `data/runs/`. Draft metadata is normalized whether LM Studio emits literal YAML front matter or a fenced YAML block, and the article content is converted to WordPress HTML only at posting time. WordPress post lookup by slug prevents duplicate posting after restart; post ID/URL/date are stored only after WordPress confirms the response.
 
 ## Review and macOS permissions
 
@@ -53,26 +53,19 @@ These steps start on the Mac that will run the agent. They create a safe first W
 
 ### 1. Clone the repository into a folder
 
-Open **Terminal** and run:
-
 ```sh
 mkdir -p ~/Developer
 cd ~/Developer
 git clone https://github.com/nolanyoungg/WP-blog-agent.git
 cd WP-blog-agent
-```
-
-Verify that the starter tracker exists:
-
-```sh
 ls -l manual-files/wordpress-blog-content-tracker.xlsx
 ```
 
-It contains a `Blog tracker` sheet and a single pending sample row with `blog_id` `1`.
+The starter tracker contains a `Blog tracker` sheet and one pending sample row with `blog_id` `1`.
 
 ### 2. Install Node dependencies
 
-Install Node.js 22 or newer if it is not already installed, then run:
+Install Node.js 22 or newer if needed, then run:
 
 ```sh
 node --version
@@ -81,30 +74,28 @@ npm run lint
 npm test
 ```
 
-The last two commands must pass before continuing.
+The type check and tests must pass before continuing.
 
 ### 3. Prepare LM Studio
 
-On the computer hosting LM Studio, start the LM Studio server and make it reachable at `http://192.168.1.35:1234`. Confirm `openai/gpt-oss-20b` is installed and loaded. Do not configure Ollama or any cloud provider.
+On the computer hosting LM Studio, start the server and make it reachable at `http://192.168.1.35:1234`. Confirm `openai/gpt-oss-20b` is installed and loaded. Do not configure Ollama or any cloud provider.
 
-From the Mac running this project, verify the server and preferred model:
+From the Mac running this project:
 
 ```sh
 curl --fail http://192.168.1.35:1234/v1/models
 ```
 
-The JSON output must include `openai/gpt-oss-20b`. If it does not, correct LM Studio before running the agent. The agent may use only another LLM already available on this same server if the preferred model cannot complete; it never downloads a model.
+The JSON must include `openai/gpt-oss-20b`. The agent may use only another LLM already on that same LM Studio server if the preferred model cannot complete; it never downloads a model.
 
 ### 4. Configure the local environment
-
-Create your private configuration file:
 
 ```sh
 cp .env.example .env
 nano .env
 ```
 
-Set these values in `.env` (replace every placeholder):
+Set these values, replacing all placeholders:
 
 ```dotenv
 LMSTUDIO_BASE_URL=http://192.168.1.35:1234
@@ -117,65 +108,61 @@ WORDPRESS_APPLICATION_PASSWORD=your-wordpress-application-password
 WORDPRESS_POST_STATUS=draft
 ```
 
-In WordPress, create the Application Password under the dedicated user’s profile. Do not use that user’s normal login password. Save and close the file with `Control-O`, `Return`, then `Control-X`. Never commit `.env`.
+Create the Application Password under the dedicated WordPress user’s profile; never use its normal login password. Save Nano with `Control-O`, `Return`, then `Control-X`. Never commit `.env`.
 
 ### 5. Enter the first topic in the tracker
 
-Open `manual-files/wordpress-blog-content-tracker.xlsx` in Excel or Numbers. On the `Blog tracker` sheet, replace the sample row’s `blog_topic` text with the exact first topic you want. Keep `blog_id` as `1` and `blog_status` as `pending`, then save the workbook.
-
-Do not change the header row. Leave the generated/result columns blank; the agent fills them after each confirmed action.
+Open `manual-files/wordpress-blog-content-tracker.xlsx` in Excel or Numbers. In `Blog tracker`, replace the sample row’s `blog_topic` with the exact first topic. Keep `blog_id` as `1` and `blog_status` as `pending`, then save. Do not change the header row; leave generated/result columns blank.
 
 ### 6. Run a safe real-LM-Studio dry-run on a copy
 
-The dry-run calls the real LM Studio server, creates a real Markdown draft, and updates its tracker copy. It never sends iMessage or posts to WordPress.
+This calls real LM Studio and creates a real Markdown draft, but never sends iMessage or posts to WordPress:
 
 ```sh
 cp manual-files/wordpress-blog-content-tracker.xlsx /tmp/wp-blog-agent-first-run.xlsx
 npm run once -- --dry-run --tracker /tmp/wp-blog-agent-first-run.xlsx
 ```
 
-Check the terminal output for a successful LM Studio generation, then inspect the generated Markdown under `data/drafts/`. Because the dry-run used a copy, the real tracker still has its original pending row.
+Confirm successful generation in the terminal and inspect `data/drafts/`. The real tracker stays pending because the dry-run used a copy.
 
 ### 7. Enable Messages and macOS permissions
 
-1. Sign into the intended account in the macOS **Messages** app.
-2. In `.env`, change `IMESSAGE_ADAPTER=dry-run` to `IMESSAGE_ADAPTER=macos`.
-3. Go to **System Settings → Privacy & Security → Full Disk Access** and enable the terminal app you are using.
-4. On the first real send, approve macOS’s request to let that terminal automate Messages.
+1. Sign into the intended account in macOS **Messages**.
+2. Change `IMESSAGE_ADAPTER=dry-run` to `IMESSAGE_ADAPTER=macos` in `.env`.
+3. Enable the terminal app under **System Settings → Privacy & Security → Full Disk Access**.
+4. Approve the terminal’s first request to automate Messages.
 
 ### 8. Generate and send the first review draft
-
-Run this from the repository folder:
 
 ```sh
 npm run once
 ```
 
-The agent claims row `1`, generates the draft through LM Studio, saves it in `data/drafts/`, sends it to `IMESSAGE_RECIPIENT` as a `.md` attachment, and changes the row to `awaiting_review`.
+The agent claims row `1`, generates through LM Studio, saves a `.md` draft in `data/drafts/`, sends it to `IMESSAGE_RECIPIENT`, and changes the row to `awaiting_review`.
 
 ### 9. Approve or reject from iMessage
 
-Reply from the configured recipient with exactly one of these messages:
+Reply from the configured recipient with exactly:
 
 ```text
 YES 1
 NO 1
 ```
 
-To process the reply immediately, run:
+Then process the reply immediately:
 
 ```sh
 npm run once
 ```
 
-`YES 1` posts the Markdown as a WordPress draft and writes its post ID and URL into the tracker only after WordPress confirms success. `NO 1` records rejection and stops without creating a WordPress post.
+`YES 1` posts the WordPress draft and writes its ID/URL to the tracker only after confirmed success. `NO 1` records rejection and creates no post.
 
 ### 10. Keep it running for future rows (optional)
 
-After the first post succeeds, add a new row to the tracker with a unique `blog_id`, the next `blog_topic`, and `blog_status` set to `pending`. Then leave the worker running:
+After the first post, add a row with a unique `blog_id`, next `blog_topic`, and `blog_status` `pending`, then run:
 
 ```sh
 npm run worker
 ```
 
-For automatic macOS startup, use the `launchd` example in `docs/com.nolanyoung.wp-blog-agent.plist.example` after replacing its placeholder paths. Keep credentials in environment variables or macOS Keychain, never in the plist.
+For automatic startup, use `docs/com.nolanyoung.wp-blog-agent.plist.example` after replacing placeholder paths. Keep credentials in environment variables or macOS Keychain, never in the plist.
