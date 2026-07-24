@@ -4,5 +4,6 @@ dist/
 data/drafts/
 data/runs/
 manual-files/*.xlsx
+!manual-files/wordpress-blog-content-tracker.xlsx
 tests/fixtures/*.xlsx
 *.lock
