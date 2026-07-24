@@ -31,3 +31,4 @@
 - `npm run lint` and `npm test` are the required deterministic validation commands.
 - The built application successfully reads the starter workbook and its pending first row.
 - A real dry-run against a copied workbook completed with `openai/gpt-oss-20b`, created a draft, recorded a review timestamp, and left iMessage and WordPress untouched.
+- Regression tests prove stale review replies and duplicate tracker IDs are rejected.
