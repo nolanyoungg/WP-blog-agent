@@ -9,14 +9,18 @@
 - A versioned starter tracker at `manual-files/wordpress-blog-content-tracker.xlsx` with the required sheet, columns, state dropdowns, and first pending row.
 - A bottom-of-README `Full First Instructions` walkthrough from cloning through first iMessage approval and WordPress draft creation.
 - Draft normalization for fenced YAML metadata emitted by a real LM Studio model response.
+- Timestamped review requests so stale iMessage decisions are ignored.
 
 ### Changed
 
 - Expanded the repository from its initial description into a documented application.
+- LM Studio fallback selection now uses only typed LLM entries from `/api/v1/models`; embedding models cannot be selected.
 
 ### Fixed
 
 - Corrected CLI script paths to use TypeScript’s emitted `dist/src/cli/index.js` entry point.
+- Resumed `approved` rows after a restart instead of leaving them stranded before WordPress posting.
+- Rejected duplicate `blog_id` values before a tracker operation can target the wrong row.
 
 ### Removed
 
@@ -26,4 +30,4 @@
 
 - `npm run lint` and `npm test` are the required deterministic validation commands.
 - The built application successfully reads the starter workbook and its pending first row.
-- A real dry-run against a copied workbook completed with `openai/gpt-oss-20b`, created a draft, and left iMessage and WordPress untouched.
+- A real dry-run against a copied workbook completed with `openai/gpt-oss-20b`, created a draft, recorded a review timestamp, and left iMessage and WordPress untouched.
