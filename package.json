@@ -1,0 +1,25 @@
+{
+  "name": "wp-blog-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli/index.js",
+    "once": "npm run build && node dist/cli/index.js once",
+    "worker": "npm run build && node dist/cli/index.js worker",
+    "test": "npm run build && node --test dist/tests/**/*.test.js",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "dry-run:fixture": "npm run build && node dist/cli/index.js once --dry-run --tracker tests/fixtures/wordpress-blog-content-tracker.xlsx"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "marked": "^15.0.12",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "typescript": "^5.8.3"
+  },
+  "engines": { "node": ">=22" }
+}

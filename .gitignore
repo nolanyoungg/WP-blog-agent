@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+data/drafts/
+data/runs/
+manual-files/*.xlsx
+tests/fixtures/*.xlsx
+*.lock
