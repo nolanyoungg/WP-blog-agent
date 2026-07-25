@@ -7,7 +7,7 @@ import { parseReview } from '../messaging/imessage.js';
 import { RunLog } from '../log.js';
 import { ExcelTracker } from '../tracker/excel.js';
 import { WordPressClient } from '../wordpress/client.js';
-import type { BlogRow, MessageAdapter } from '../types.js';
+import type { BlogRow, BlogStatus, MessageAdapter } from '../types.js';
 
 type Settings = ReturnType<typeof configFactory>;
 
@@ -34,6 +34,38 @@ export class BlogWorkflow {
     return Number.isFinite(requestedAt) && Number.isFinite(repliedAt) && repliedAt >= requestedAt;
   }
 
+  private reviewText(row: BlogRow) {
+    return `Blog draft #${row.blog_id} is ready: “${row.blog_topic}”\n\nReply exactly:\nYES ${row.blog_id} — post it to WordPress\nNO ${row.blog_id} — reject and stop`;
+  }
+
+  private async deliverReview(row: BlogRow, expectedState: Extract<BlogStatus, 'generating' | 'blocked_review_delivery'>) {
+    if (!row.markdown_path || !existsSync(row.markdown_path)) {
+      await this.tracker.update(row.blog_id, { blog_status: 'error', last_error: 'Review draft file is missing' }, expectedState);
+      await this.log.write('review.delivery_missing_draft', { blog_id: row.blog_id, markdown_path: row.markdown_path ?? '' });
+      return false;
+    }
+    const requestedAt = new Date().toISOString();
+    try {
+      await this.notify(this.reviewText(row), row.markdown_path);
+    } catch (error) {
+      const lastError = `Review delivery failed: ${error instanceof Error ? error.message : String(error)}`;
+      await this.tracker.update(row.blog_id, { blog_status: 'blocked_review_delivery', last_error: lastError }, expectedState);
+      await this.log.write('review.delivery_blocked', { blog_id: row.blog_id, markdown_path: row.markdown_path, last_error: lastError });
+      return false;
+    }
+    await this.tracker.update(row.blog_id, { blog_status: 'awaiting_review', review_requested_at: requestedAt, last_error: '' }, expectedState);
+    await this.log.write('workflow.awaiting_review', { blog_id: row.blog_id, draft: row.markdown_path, model: row.model_used ?? '', review_requested_at: requestedAt });
+    return true;
+  }
+
+  private async retryBlockedReviewDelivery() {
+    const row = (await this.tracker.rows()).find(candidate => candidate.blog_status === 'blocked_review_delivery');
+    if (!row) return false;
+    await this.log.write('review.delivery_retrying', { blog_id: row.blog_id, markdown_path: row.markdown_path ?? '' });
+    await this.deliverReview(row, 'blocked_review_delivery');
+    return true;
+  }
+
   async processReviews() {
     const awaiting = new Map((await this.tracker.rows()).filter(row => row.blog_status === 'awaiting_review').map(row => [row.blog_id, row]));
     if (!awaiting.size || this.dryRun) return 0;
@@ -50,12 +82,12 @@ export class BlogWorkflow {
       }
       awaiting.delete(row.blog_id);
       if (decision.decision === 'rejected') {
-        await this.tracker.update(row.blog_id, { blog_status: 'rejected', review_status: 'rejected', review_reply_at: reply.receivedAt });
+        await this.tracker.update(row.blog_id, { blog_status: 'rejected', review_status: 'rejected', review_reply_at: reply.receivedAt }, 'awaiting_review');
         await this.notify(`Blog draft #${row.blog_id} was rejected. No post was created.`);
         handled++;
         continue;
       }
-      await this.tracker.update(row.blog_id, { blog_status: 'approved', review_status: 'approved', review_reply_at: reply.receivedAt });
+      await this.tracker.update(row.blog_id, { blog_status: 'approved', review_status: 'approved', review_reply_at: reply.receivedAt }, 'awaiting_review');
       await this.postApproved(row.blog_id);
       handled++;
     }
@@ -66,24 +98,27 @@ export class BlogWorkflow {
     const row = (await this.tracker.rows()).find(candidate => candidate.blog_id === blogId);
     if (!row || row.blog_status === 'posted') return;
     if (!row.markdown_path || !existsSync(row.markdown_path)) {
-      await this.tracker.update(blogId, { blog_status: 'error', last_error: 'Approved draft file is missing' });
+      await this.tracker.update(blogId, { blog_status: 'error', last_error: 'Approved draft file is missing' }, 'approved');
       await this.notify(`Blog #${blogId} could not be posted: the draft file is missing.`);
       return;
     }
     try {
-      await this.tracker.update(blogId, { blog_status: 'posting', last_error: '' });
+      await this.tracker.update(blogId, { blog_status: 'posting', last_error: '' }, 'approved');
       if (this.dryRun) { await this.log.write('wordpress.skipped_dry_run', { blog_id: blogId }); return; }
       const post = await new WordPressClient(requireWordPress(this.settings)).post(await parseDraft(row.markdown_path));
-      await this.tracker.update(blogId, { blog_status: 'posted', blog_posted_date: new Date().toISOString(), wordpress_post_id: String(post.id), wordpress_url: post.link });
-      await this.notify(`Blog #${blogId} was posted successfully: ${post.link}`);
+      await this.tracker.update(blogId, { blog_status: 'posted', blog_posted_date: new Date().toISOString(), wordpress_post_id: String(post.id), wordpress_url: post.link }, 'posting');
+      try { await this.notify(`Blog #${blogId} was posted successfully: ${post.link}`); }
+      catch (error) { await this.log.write('imessage.post_confirmation_failed', { blog_id: blogId, error: String(error) }); }
     } catch (error) {
-      await this.tracker.update(blogId, { blog_status: 'error', last_error: String(error) });
+      const current = (await this.tracker.rows()).find(candidate => candidate.blog_id === blogId);
+      if (current?.blog_status === 'posting') await this.tracker.update(blogId, { blog_status: 'error', last_error: String(error) }, 'posting');
       await this.notify(`Blog #${blogId} could not be posted: ${String(error)}`);
       throw error;
     }
   }
 
   async processNext() {
+    if (!this.dryRun && await this.retryBlockedReviewDelivery()) return;
     await this.processReviews();
     if (!this.dryRun) {
       const approved = (await this.tracker.rows()).find(row => row.blog_status === 'approved');
@@ -91,18 +126,19 @@ export class BlogWorkflow {
     }
     const row = await this.tracker.claimNext();
     if (!row) { await this.log.write('workflow.no_pending_rows'); return; }
+    let ready: BlogRow;
     try {
       await this.log.write('workflow.generation_started', { blog_id: row.blog_id });
       const generated = await this.lm.generate(promptFor(row.blog_topic));
       const draft = await saveDraft(this.settings.draftsDir, row, generated.markdown, generated.model);
-      const requestedAt = new Date().toISOString();
-      await this.tracker.update(row.blog_id, { blog_status: 'awaiting_review', review_status: 'pending', review_token: `YES ${row.blog_id} / NO ${row.blog_id}`, review_requested_at: requestedAt, markdown_path: draft, model_used: generated.model, blog_created_date: requestedAt, last_error: '' });
-      await this.notify(`Blog draft #${row.blog_id} is ready: “${row.blog_topic}”\n\nReply exactly:\nYES ${row.blog_id} — post it to WordPress\nNO ${row.blog_id} — reject and stop`, draft);
-      await this.log.write('workflow.awaiting_review', { blog_id: row.blog_id, draft, model: generated.model, review_requested_at: requestedAt });
+      const createdAt = new Date().toISOString();
+      await this.tracker.update(row.blog_id, { review_status: 'pending', review_token: `YES ${row.blog_id} / NO ${row.blog_id}`, review_requested_at: '', markdown_path: draft, model_used: generated.model, blog_created_date: createdAt, last_error: '' }, 'generating');
+      ready = { ...row, review_status: 'pending', review_token: `YES ${row.blog_id} / NO ${row.blog_id}`, review_requested_at: '', markdown_path: draft, model_used: generated.model, blog_created_date: createdAt, last_error: '' };
     } catch (error) {
-      await this.tracker.update(row.blog_id, { blog_status: 'error', last_error: String(error) });
+      await this.tracker.update(row.blog_id, { blog_status: 'error', last_error: String(error) }, 'generating');
       await this.notify(`Blog #${row.blog_id} could not be generated: ${String(error)}`);
       throw error;
     }
+    await this.deliverReview(ready, 'generating');
   }
 }

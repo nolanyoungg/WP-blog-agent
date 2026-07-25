@@ -32,13 +32,15 @@ npm run lint
 npm test
 ```
 
-`once` handles valid outstanding replies then claims/generates at most one row. `worker` repeats at `POLL_INTERVAL_MS`. Dry-run still uses the real configured LM Studio instance and updates only the supplied tracker/draft, but never sends an iMessage or posts to WordPress. Always use a copy when dry-running.
+`once` first retries one `blocked_review_delivery` row, otherwise handles valid outstanding replies and claims/generates at most one row. `worker` repeats at `POLL_INTERVAL_MS`. A blocked retry reuses the saved Markdown draft and model metadata; it never calls LM Studio or WordPress. Dry-run still uses the real configured LM Studio instance and updates only the supplied tracker/draft, but never sends an iMessage or posts to WordPress. Always use a copy when dry-running.
 
 Markdown source is saved under `data/drafts/`; JSONL logs are under `data/runs/`. Draft metadata is normalized whether LM Studio emits literal YAML front matter or a fenced YAML block, and the article content is converted to WordPress HTML only at posting time. WordPress post lookup by slug prevents duplicate posting after restart; post ID/URL/date are stored only after WordPress confirms the response.
 
 ## Review adapters and macOS permissions
 
 The attached draft asks the recipient to reply exactly `YES <blog_id>` or `NO <blog_id>` (case-insensitive). Messages from other senders and malformed, stale, or ambiguous text are ignored. `NO` records rejection and stops; `YES` posts the matching approved draft. Completion and errors are confirmed by iMessage.
+
+The tracker enters `awaiting_review` only after the review message and draft attachment are delivered successfully. If delivery fails, the generated artifact, model, creation time, and review token remain intact, `last_error` records the delivery problem, and the row enters `blocked_review_delivery`. The next live `once` or `worker` pass retries that exact draft before doing other work. A successful retry clears `last_error`, records a fresh `review_requested_at`, and moves to `awaiting_review`; replies older than that fresh timestamp remain invalid. Repeated retries do not regenerate the article or create a WordPress post.
 
 Set `IMESSAGE_ADAPTER=macos` to use Messages directly on the machine running the workflow. Sign into Messages first. macOS will request permission for the terminal/launch agent to automate Messages; allow it. Reading replies queries `~/Library/Messages/chat.db`, so grant the executing terminal or launch service **Full Disk Access** in System Settings → Privacy & Security. Use `IMESSAGE_ADAPTER=dry-run` before allowing real sends.
 
@@ -48,7 +50,7 @@ Copy `docs/com.nolanyoung.wp-blog-agent.plist.example` to `~/Library/LaunchAgent
 
 ## Troubleshooting
 
-Before real model work, confirm server/model availability and stream LM Studio logs: `lms server status`, `lms log stream --source server --json`, and `lms log stream --source model --filter input,output --json --stats`. If no usable LM Studio LLM completes, the row becomes `error`, the user is notified, and WordPress is untouched. This repo’s policy prohibits fake model clients and canned model responses, so deterministic tests cover parsing and file behavior; real generation must be verified against LM Studio.
+Before real model work, confirm server/model availability and stream LM Studio logs: `lms server status`, `lms log stream --source server --json`, and `lms log stream --source model --filter input,output --json --stats`. If no usable LM Studio LLM completes, the row becomes `error`, the user is notified, and WordPress is untouched. A `blocked_review_delivery` row means generation already succeeded but the review channel did not; restore the configured Messages/relay connection and run `npm run once` to retry the saved draft. This repo’s policy prohibits fake model clients and canned model responses, so deterministic tests cover parsing and file behavior; real generation must be verified against LM Studio.
 
 ## Full First Instructions
 
@@ -141,7 +143,7 @@ Confirm successful generation in the terminal and inspect `data/drafts/`. The re
 npm run once
 ```
 
-The agent claims row `1`, generates through LM Studio, saves a `.md` draft in `data/drafts/`, sends it to `IMESSAGE_RECIPIENT`, and changes the row to `awaiting_review`.
+The agent claims row `1`, generates through LM Studio, saves a `.md` draft in `data/drafts/`, sends it to `IMESSAGE_RECIPIENT`, and changes the row to `awaiting_review` only after delivery succeeds. If Messages is unavailable, the row becomes `blocked_review_delivery`; fix the connection and run `npm run once` again to resend the existing draft without another model request.
 
 ### 9. Approve or reject from iMessage
 

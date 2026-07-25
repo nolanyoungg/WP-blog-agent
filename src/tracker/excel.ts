@@ -1,11 +1,32 @@
 import { mkdir, open, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import XLSX from 'xlsx';
-import type { BlogRow, BlogStatus } from '../types.js';
+import { BLOG_STATUSES, type BlogRow, type BlogStatus } from '../types.js';
 
 const sheetName = 'Blog tracker';
 const required = ['blog_id', 'blog_topic', 'blog_status', 'blog_created_date', 'blog_posted_date'];
 const iso = () => new Date().toISOString();
+const transitions: Record<BlogStatus, readonly BlogStatus[]> = {
+  pending: ['generating'],
+  generating: ['blocked_review_delivery', 'awaiting_review', 'error'],
+  blocked_review_delivery: ['awaiting_review', 'error'],
+  awaiting_review: ['approved', 'rejected', 'error'],
+  approved: ['posting', 'error'],
+  rejected: [],
+  posting: ['posted', 'error'],
+  posted: [],
+  error: []
+};
+
+export const assertTransition = (from: BlogStatus, to: BlogStatus) => {
+  if (!transitions[from].includes(to)) throw new Error(`Invalid tracker transition: ${from} -> ${to}`);
+};
+
+const status = (value: unknown, row: number) => {
+  const candidate = String(value) as BlogStatus;
+  if (!BLOG_STATUSES.includes(candidate)) throw new Error(`Invalid blog_status in row ${row}: ${candidate}`);
+  return candidate;
+};
 
 export class ExcelTracker {
   constructor(readonly file: string) {}
@@ -39,7 +60,7 @@ export class ExcelTracker {
 
   async rows(): Promise<BlogRow[]> {
     const { rows } = this.read();
-    return rows.map((row, index) => ({ ...row, row: index + 2, blog_id: String(row.blog_id), blog_topic: String(row.blog_topic), blog_status: String(row.blog_status) as BlogStatus }));
+    return rows.map((row, index) => ({ ...row, row: index + 2, blog_id: String(row.blog_id), blog_topic: String(row.blog_topic), blog_status: status(row.blog_status, index + 2) }));
   }
 
   async claimNext(): Promise<BlogRow | undefined> {
@@ -48,17 +69,24 @@ export class ExcelTracker {
       const index = rows.findIndex(row => String(row.blog_status).toLowerCase() === 'pending');
       if (index < 0) return undefined;
       const row = index + 2;
+      assertTransition(status(rows[index].blog_status, row), 'generating');
       this.setCells(sheet, row, { blog_status: 'generating', review_status: 'pending', last_error: '', last_updated_at: iso() });
       await this.atomic(book);
       return { ...rows[index], row, blog_id: String(rows[index].blog_id), blog_topic: String(rows[index].blog_topic), blog_status: 'generating' as BlogStatus };
     });
   }
 
-  async update(blogId: string, changes: Record<string, string>) {
+  async update(blogId: string, changes: Record<string, string>, expectedState?: BlogStatus) {
     return this.lock(async () => {
       const { book, sheet, rows } = this.read();
       const index = rows.findIndex(row => String(row.blog_id) === String(blogId));
       if (index < 0) throw new Error(`blog_id ${blogId} no longer exists in tracker`);
+      const current = status(rows[index].blog_status, index + 2);
+      if (expectedState && current !== expectedState) throw new Error(`blog_id ${blogId} is ${current}, expected ${expectedState}`);
+      if (changes.blog_status) {
+        const next = status(changes.blog_status, index + 2);
+        if (next !== current) assertTransition(current, next);
+      }
       this.setCells(sheet, index + 2, { ...changes, last_updated_at: iso() });
       await this.atomic(book);
     });
