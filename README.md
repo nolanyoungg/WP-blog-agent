@@ -174,6 +174,8 @@ For automatic startup, use `docs/com.nolanyoung.wp-blog-agent.plist.example` aft
 
 Use this add-on when Windows runs LM Studio and the workflow, while a Mac at home must send the iMessage review request and read its reply. It preserves the normal direct-macOS workflow; select it only by setting `IMESSAGE_ADAPTER=relay` on the Windows machine.
 
+For the complete Home Windows + Home Intel Mac + Work Mac setup, including the first safe and official runs, follow [the three-machine runbook](docs/THREE-MACHINE-RUNBOOK.md).
+
 ```text
 Windows PC                                      Home Intel Mac
 ──────────                                      ──────────────
