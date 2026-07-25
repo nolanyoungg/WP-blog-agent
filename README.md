@@ -19,7 +19,9 @@ The workbook has a `Blog tracker` sheet with `blog_id`, `blog_topic`, `blog_stat
 
 ## LM Studio behavior
 
-The agent uses native `GET /api/v1/models` and `POST /api/v1/models/load` to find/load already-installed models, and OpenAI-compatible `GET /v1/models` and `POST /v1/chat/completions` to health-check and generate. It tries `openai/gpt-oss-20b` first and retries one transient failure. Only another LLM advertised by that same LM Studio server is eligible as a fallback; embeddings, downloads, Ollama, hosted OpenAI, Anthropic, and other providers are excluded. Actual selected model and errors are written to the run log and tracker.
+The agent uses native `GET /api/v1/models` and `POST /api/v1/models/load` to find or load already-installed models, and OpenAI-compatible `GET /v1/models` and `POST /v1/chat/completions` to health-check and generate. Each response is runtime-schema checked before any field is used. It tries `openai/gpt-oss-20b` first, including loading that installed model when allowed, and retries one failed completion. Only another LLM advertised by that same LM Studio server is eligible as a fallback; embeddings, downloads, Ollama, hosted OpenAI, Anthropic, and other providers are excluded. Actual selected model and errors are written to the run log and tracker.
+
+Chat completion is deliberately non-streaming and bounded: `temperature=0`, `top_p=1`, `seed=42`, `max_tokens=8192`, and `stream=false`. A response must contain at least one choice, nonempty assistant text, and `finish_reason=stop`. Length-limited, tool-call, filtered, missing, malformed, or otherwise unfinished responses are rejected; partial output never becomes a draft. These fields and endpoints follow LM Studio’s official [Chat Completions](https://lmstudio.ai/docs/developer/openai-compat/chat-completions), [OpenAI-compatible model list](https://lmstudio.ai/docs/developer/openai-compat/models), [native model list](https://lmstudio.ai/docs/developer/rest/list), and [native model load](https://lmstudio.ai/docs/developer/rest/load) documentation.
 
 ## Commands
 
@@ -34,7 +36,9 @@ npm test
 
 `once` handles valid outstanding replies then claims/generates at most one row. `worker` repeats at `POLL_INTERVAL_MS`. Dry-run still uses the real configured LM Studio instance and updates only the supplied tracker/draft, but never sends an iMessage or posts to WordPress. Always use a copy when dry-running.
 
-Markdown source is saved under `data/drafts/`; JSONL logs are under `data/runs/`. Draft metadata is normalized whether LM Studio emits literal YAML front matter or a fenced YAML block, and the article content is converted to WordPress HTML only at posting time. WordPress post lookup by slug prevents duplicate posting after restart; post ID/URL/date are stored only after WordPress confirms the response.
+Markdown source is saved under `data/drafts/`; JSONL logs are under `data/runs/`. Before a draft is saved, literal YAML front matter must contain exactly a bounded `title`, `excerpt`, lowercase kebab-case `slug`, one or more `categories`, and one or more `tags`. Missing or fenced metadata, duplicate YAML keys, unknown fields, raw HTML, executable URLs, and malformed values are rejected instead of being repaired or inferred. The article body must contain 400–5,000 words, begin with the matching level-one title and a meta-description paragraph, and progress through `Introduction`, at least two main sections, `Practical Steps or Examples`, and `Conclusion`.
+
+Approval does not make the file trusted. The stored draft and its provenance are parsed and schema-checked again immediately before posting. Markdown is compiled with fixed `marked` options, then the HTML is scanned and sanitized to a blog-oriented allowlist before the first WordPress request. PHP/code-execution tags, scripts, styles, iframes, objects, embeds, forms and other active elements, inline event handlers, executable `javascript:`/`data:` URLs, and unsupported rendered tags fail closed. Normal blog links, headings, lists, tables, code blocks, and images with HTTP(S) or relative URLs remain supported. WordPress term lookups, duplicate lookups, and creation responses are also schema-checked. WordPress post lookup by slug still prevents duplicate posting after restart; post ID/URL/date are stored only after WordPress confirms a valid response.
 
 ## Review adapters and macOS permissions
 
@@ -48,7 +52,7 @@ Copy `docs/com.nolanyoung.wp-blog-agent.plist.example` to `~/Library/LaunchAgent
 
 ## Troubleshooting
 
-Before real model work, confirm server/model availability and stream LM Studio logs: `lms server status`, `lms log stream --source server --json`, and `lms log stream --source model --filter input,output --json --stats`. If no usable LM Studio LLM completes, the row becomes `error`, the user is notified, and WordPress is untouched. This repo’s policy prohibits fake model clients and canned model responses, so deterministic tests cover parsing and file behavior; real generation must be verified against LM Studio.
+Before real model work, record the start time, confirm the endpoint/model, health-check the server, and stream LM Studio logs: `lms server status`, `lms log stream --source server --json`, and `lms log stream --source model --filter input,output --json --stats`. Keep both streams open until completion, timeout, or confirmed error, then verify the command exit status and generated artifact. LM Studio documents these flags in the official [`lms log stream` reference](https://lmstudio.ai/docs/cli/serve/log-stream). If no usable LM Studio LLM completes, the row becomes `error`, the user is notified, and WordPress is untouched. This repo’s policy prohibits fake model clients and canned model responses, so deterministic tests use static validation fixtures only; real generation must be verified against LM Studio or LM Link.
 
 ## Full First Instructions
 
