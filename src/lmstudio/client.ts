@@ -18,9 +18,14 @@ export const selectLlmCandidates = (primaryModel: string, models: NativeModel[])
 };
 
 const textFrom = (body: any) => body?.choices?.[0]?.message?.content ?? body?.output?.find((x: any) => x.type === 'message')?.content ?? body?.output_text;
+export const structuredArgumentsFromResponses = (body: any, functionName: string) => {
+  const call = body?.output?.find((item: any) => item?.type === 'function_call' && item?.name === functionName);
+  if (typeof call?.arguments !== 'string' || !call.arguments.trim()) throw new Error(`LM Studio Responses API returned no ${functionName} arguments`);
+  return call.arguments.trim();
+};
 
 export class LMStudioClient {
-  constructor(private readonly settings: { baseUrl: string; token: string; primaryModel: string; allowFallbackLoad: boolean; timeoutMs: number; retryLimit: number }, private readonly log: RunLog) {}
+  constructor(private readonly settings: { baseUrl: string; token: string; primaryModel: string; allowFallbackLoad: boolean; timeoutMs: number; maxTokens: number; retryLimit: number }, private readonly log: RunLog) {}
 
   private async request(path: string, init: RequestInit = {}) {
     const controller = new AbortController();
@@ -50,14 +55,54 @@ export class LMStudioClient {
     return body.instance_id ?? model;
   }
 
-  private async completion(model: string, prompt: string) {
-    const body = await this.request('/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model, temperature: 0.4, messages: [{ role: 'system', content: 'You write accurate, original WordPress blog articles. Never invent citations, sources, product claims, or technical facts.' }, { role: 'user', content: prompt }] }) });
+  private async chatCompletion(model: string, prompt: string, schema: Record<string, unknown>, correction?: string) {
+    const messages = [
+      { role: 'system', content: 'You write accurate, original WordPress blog articles as structured JSON. Never invent citations, sources, product claims, statistics, or technical facts.' },
+      { role: 'user', content: prompt },
+      ...(correction ? [{ role: 'user', content: `The previous attempt failed validation: ${correction}\nRegenerate the complete JSON object and correct that failure.` }] : [])
+    ];
+    const responseFormat = { type: 'json_schema', json_schema: { name: 'wordpress_article', strict: 'true', schema } };
+    const body = await this.request('/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model, temperature: 0.1, max_tokens: this.settings.maxTokens, messages, response_format: responseFormat }) });
+    if (body?.choices?.[0]?.finish_reason === 'length') throw new Error(`LM Studio reached max_tokens (${this.settings.maxTokens}) before completing the structured article`);
     const text = textFrom(body);
     if (typeof text !== 'string' || !text.trim()) throw new Error(`LM Studio returned no article text for ${model}`);
     return text.trim();
   }
 
-  async generate(prompt: string, validate?: (markdown: string) => void): Promise<{ markdown: string; model: string }> {
+  private async responsesCompletion(model: string, prompt: string, schema: Record<string, unknown>, correction?: string) {
+    const functionName = 'submit_structured_result';
+    const input = `${prompt}${correction ? `\n\nThe previous attempt failed validation: ${correction}\nRegenerate the complete article and correct that failure.` : ''}\n\nCall ${functionName} exactly once with the complete article.`;
+    const body = await this.request('/v1/responses', {
+      method: 'POST',
+      body: JSON.stringify({
+        model,
+        instructions: 'Write an accurate, original WordPress blog article. Never invent citations, sources, product claims, statistics, or technical facts.',
+        input,
+        reasoning: { effort: 'low' },
+        temperature: 0.1,
+        max_output_tokens: this.settings.maxTokens,
+        tools: [{
+          type: 'function',
+          name: functionName,
+          description: 'Submit the structured WordPress generation result for deterministic rendering and validation.',
+          parameters: schema,
+          strict: true
+        }],
+        tool_choice: 'required',
+        parallel_tool_calls: false
+      })
+    });
+    if (body?.status === 'incomplete') throw new Error(`LM Studio reached max_output_tokens (${this.settings.maxTokens}) before completing the structured article`);
+    return structuredArgumentsFromResponses(body, functionName);
+  }
+
+  private completion(model: string, modelKey: string, prompt: string, schema: Record<string, unknown>, correction?: string) {
+    return modelKey.toLowerCase().includes('gpt-oss')
+      ? this.responsesCompletion(model, prompt, schema, correction)
+      : this.chatCompletion(model, prompt, schema, correction);
+  }
+
+  async generateStructured<T>(prompt: string, schema: Record<string, unknown>, parseAndValidate: (text: string) => T): Promise<{ value: T; model: string }> {
     await this.health();
     const candidates = selectLlmCandidates(this.settings.primaryModel, await this.nativeModels());
     if (!candidates.some(candidate => candidate.key === this.settings.primaryModel)) await this.log.write('lmstudio.primary_not_loaded', { model: this.settings.primaryModel });
@@ -66,14 +111,16 @@ export class LMStudioClient {
       try {
         if (!candidate.loaded && !this.settings.allowFallbackLoad) { await this.log.write('lmstudio.fallback_skipped_unloaded', { model: candidate.key }); continue; }
         const model = candidate.loaded ? (candidate.instanceId ?? candidate.key) : await this.load(candidate.key);
+        let correction: string | undefined;
         for (let attempt = 0; attempt <= this.settings.retryLimit; attempt++) {
           try {
-            const markdown = await this.completion(model, prompt);
-            validate?.(markdown);
+            const text = await this.completion(model, candidate.key, prompt, schema, correction);
+            const value = parseAndValidate(text);
             await this.log.write('lmstudio.generation_succeeded', { model, attempt });
-            return { markdown, model };
+            return { value, model };
           } catch (error) {
             last = error;
+            correction = String(error).slice(0, 1000);
             await this.log.write('lmstudio.generation_failed', { model, attempt, error: String(error) });
           }
         }

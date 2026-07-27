@@ -1,11 +1,12 @@
 import { mkdir, open, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import XLSX from 'xlsx';
-import type { BlogRow, BlogStatus, BlogType } from '../types.js';
+import type { BlogRow, BlogStatus } from '../domain/blog.js';
+import { ensureBlogFormatDataValidation } from './xlsx-data-validation.js';
 
 const sheetName = 'Blog tracker';
 const required = ['blog_id', 'blog_topic', 'blog_length', 'blog_type', 'blog_status', 'blog_created_date', 'blog_posted_date'];
-const blogType = (value: unknown): BlogType | undefined => ['short', 'medium', 'long'].includes(String(value).toLowerCase()) ? String(value).toLowerCase() as BlogType : undefined;
+const blogFormatId = (value: unknown) => String(value ?? '').trim().toLowerCase() || undefined;
 const blogLength = (value: unknown) => {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
@@ -37,24 +38,30 @@ export class ExcelTracker {
   private async atomic(book: XLSX.WorkBook) {
     const temp = `${this.file}.${process.pid}.tmp.xlsx`;
     XLSX.writeFile(book, temp, { cellStyles: true });
+    if (book.Sheets['Blog Formats']) await ensureBlogFormatDataValidation(temp);
     XLSX.readFile(temp);
     await rename(temp, this.file);
   }
 
   async rows(): Promise<BlogRow[]> {
     const { rows } = this.read();
-    return rows.map((row, index) => ({ ...row, row: index + 2, blog_id: String(row.blog_id), blog_topic: String(row.blog_topic), blog_length: blogLength(row.blog_length), blog_type: blogType(row.blog_type), blog_status: String(row.blog_status) as BlogStatus }));
+    return rows.map((row, index) => ({ ...row, row: index + 2, blog_id: String(row.blog_id), blog_topic: String(row.blog_topic), blog_length: blogLength(row.blog_length), blog_type: blogFormatId(row.blog_type), blog_status: String(row.blog_status) as BlogStatus }));
   }
 
-  async claimNext(): Promise<BlogRow | undefined> {
+  async claimNext(validFormatIds?: ReadonlySet<string>): Promise<BlogRow | undefined> {
     return this.lock(async () => {
       const { book, sheet, rows } = this.read();
       const index = rows.findIndex(row => String(row.blog_status).toLowerCase() === 'pending');
       if (index < 0) return undefined;
+      const selected = rows[index];
+      const length = blogLength(selected.blog_length);
+      const formatId = blogFormatId(selected.blog_type);
+      if (!length) throw new Error(`blog_id ${String(selected.blog_id)} has an invalid blog_length`);
+      if (!formatId || (validFormatIds && !validFormatIds.has(formatId))) throw new Error(`blog_id ${String(selected.blog_id)} has unknown blog_type "${formatId ?? ''}"${validFormatIds ? `. Available formats: ${[...validFormatIds].join(', ')}` : ''}`);
       const row = index + 2;
       this.setCells(sheet, row, { blog_status: 'generating', review_status: 'pending' });
       await this.atomic(book);
-      return { ...rows[index], row, blog_id: String(rows[index].blog_id), blog_topic: String(rows[index].blog_topic), blog_length: blogLength(rows[index].blog_length), blog_type: blogType(rows[index].blog_type), blog_status: 'generating' as BlogStatus };
+      return { ...selected, row, blog_id: String(selected.blog_id), blog_topic: String(selected.blog_topic), blog_length: length, blog_type: formatId, blog_status: 'generating' as BlogStatus };
     });
   }
 

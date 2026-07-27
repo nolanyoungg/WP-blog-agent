@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { config } from '../src/config/index.js';
 import { DryRunMessageAdapter } from '../src/messaging/imessage.js';
 import { BlogWorkflow } from '../src/workflow/agent.js';
-import type { BlogRow } from '../src/types.js';
+import type { BlogRow } from '../src/domain/blog.js';
 
 test('only accepts a reply sent after its review request', () => {
   const workflow = new BlogWorkflow(config({ TRACKER_PATH: 'tests/fixtures/unused.xlsx', IMESSAGE_RECIPIENT: '+15555550123' }), new DryRunMessageAdapter(), true) as unknown as { replyIsCurrent(row: BlogRow, receivedAt: string): boolean };

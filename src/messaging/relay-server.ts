@@ -4,7 +4,7 @@ import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { timingSafeEqual } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
-import type { MessageAdapter } from '../types.js';
+import type { MessageAdapter } from './types.js';
 
 const maxBodyBytes = 12 * 1024 * 1024;
 

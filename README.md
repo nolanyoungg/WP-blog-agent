@@ -13,13 +13,28 @@ npm install
 cp .env.example .env
 ```
 
-Set the iMessage recipient, tracker location, WordPress URL/user/application password, and keep `WORDPRESS_POST_STATUS=draft` unless intentional publication is required. HTTPS is enforced unless `WORDPRESS_ALLOW_HTTP=true` is explicitly set for local development. Do not commit `.env`, drafts, logs, or workbooks.
+Set the iMessage recipient, tracker location, WordPress URL/user/application password, and keep `WORDPRESS_POST_STATUS=draft` unless intentional publication is required. HTTPS is enforced unless `WORDPRESS_ALLOW_HTTP=true` is explicitly set for local development. Do not commit `.env`, drafts, logs, or ad hoc workbook copies.
 
-The workbook has a `Blog tracker` sheet with exactly these columns: `blog_id`, `blog_topic`, `blog_length`, `blog_type`, `blog_status`, `blog_created_date`, `blog_posted_date`, `markdown_path`, `review_status`, `review_token`, `model_used`, `wordpress_post_id`, and `wordpress_url`. `blog_length` is the target body-word count. `blog_type` must be `short` (exactly 4 H1 headings), `medium` (6 H1 headings), or `long` (10 H1 headings). Before a draft can be reviewed, the agent verifies the exact H1 count and that the word count is within 15% of the target (with a minimum 75-word tolerance), retrying generation once if needed. The agent atomically writes a validated temporary workbook and uses an exclusive sidecar lock to prevent two workers claiming the same pending row. The versioned starter workbook also includes an `SEO Content Plan` sheet for planning only; the agent reads and updates **only** `Blog tracker`.
+The workbook has a `Blog tracker` sheet with exactly these columns: `blog_id`, `blog_topic`, `blog_length`, `blog_type`, `blog_status`, `blog_created_date`, `blog_posted_date`, `markdown_path`, `review_status`, `review_token`, `model_used`, `wordpress_post_id`, and `wordpress_url`. `blog_length` is the independent target content-word count. `blog_type` is a format ID discovered from `config/blog-formats/`, not a TypeScript enum. The bundled definitions are `short` (exactly 4 H1 headings), `medium` (6), and `long` (10). Before review, the agent enforces the selected format’s section allocation, paragraph limits, allowed and required blocks, metadata, exact H1 count, and overall word tolerance, retrying with the precise validation failure when needed. The agent atomically writes a validated temporary workbook and uses an exclusive sidecar lock to prevent two workers claiming the same pending row. The versioned workbook also includes an `SEO Content Plan` sheet for planning and a generated `Blog Formats` reference sheet.
+
+## Blog format definitions
+
+Each real format has an authoritative `config/blog-formats/<format-id>/format.json` and a readable `example.md`. The JSON defines the display name, free-form writing guidance, ordered sections, word percentages, paragraph counts and lengths, allowed blocks, required blocks, and an optional language for required `fenced_code` blocks. Section count determines the exact H1 count; headings and Markdown blocks are rendered by the application so model-supplied body text cannot add headings.
+
+To add a format, create its folder and two files, then run:
+
+```sh
+npm run formats:validate
+npm run formats:sync
+```
+
+Validation is read-only and rejects duplicate IDs, missing files, invalid examples, malformed paragraph/block rules, and word percentages that do not total 100. Sync regenerates `Blog Formats` and the `blog_type` dropdown from the discovered definitions. No TypeScript edit or committed test format is needed.
 
 ## LM Studio behavior
 
-The agent uses native `GET /api/v1/models` and `POST /api/v1/models/load` to find/load already-installed models, and OpenAI-compatible `GET /v1/models` and `POST /v1/chat/completions` to health-check and generate. It tries `openai/gpt-oss-20b` first and retries one transient failure. Only another LLM advertised by that same LM Studio server is eligible as a fallback; embeddings, downloads, Ollama, hosted OpenAI, Anthropic, and other providers are excluded. Actual selected model and errors are written to the run log and tracker.
+The agent uses native `GET /api/v1/models` and `POST /api/v1/models/load` to find/load already-installed models, and OpenAI-compatible `GET /v1/models` to health-check. Generation gives `openai/gpt-oss-20b` forced function schemas through LM Studio’s [Responses API](https://lmstudio.ai/docs/developer/openai-compat/responses), the API LM Studio documents with GPT-OSS and its Harmony format. Other eligible LM Studio LLMs use the documented [`json_schema` Chat Completions structured output](https://lmstudio.ai/docs/developer/openai-compat/structured-output).
+
+Generation is staged for reliable long articles. First, an exact format-derived schema produces metadata and one heading for every required section key. The agent then makes one structured call per section using that section’s word allocation, paragraph limits, and required block types. Each section must pass deterministic validation before the next begins; adjacent undersized paragraph fragments may be merged, but the final paragraphs must still satisfy the definition. Only after every section passes does application code assemble the article, enforce the overall word tolerance and exact H1 count, render Markdown, and save a draft. The agent tries `openai/gpt-oss-20b` first and makes up to three validation-guided retries per structured stage. Only another LLM advertised by that same LM Studio server is eligible as a fallback; embeddings, downloads, Ollama, hosted OpenAI, Anthropic, and other providers are excluded. Actual selected model, section progress, retry failures, and completion are written to the run log and tracker. `LMSTUDIO_TIMEOUT_MS` defaults to five minutes, while `LMSTUDIO_MAX_TOKENS` defaults to 6,000 to bound a runaway response and produce an explicit completion error.
 
 ## Commands
 
@@ -28,13 +43,15 @@ npm run once
 npm run worker
 npm run once -- --dry-run
 npm run relay
+npm run formats:validate
+npm run formats:sync
 npm run lint
 npm test
 ```
 
 `once` handles valid outstanding replies then claims/generates at most one row. `worker` repeats at `POLL_INTERVAL_MS`. Dry-run still uses the real configured LM Studio instance and updates only the supplied tracker/draft, but never sends an iMessage or posts to WordPress. Always use a copy when dry-running.
 
-Markdown source is saved under `data/drafts/`; JSONL logs are under `data/runs/`. Draft metadata is normalized whether LM Studio emits literal YAML front matter or a fenced YAML block, and the article content is converted to WordPress HTML only at posting time. WordPress post lookup by slug prevents duplicate posting after restart; post ID/URL/date are stored only after WordPress confirms the response.
+Markdown source is saved under `data/drafts/`; JSONL logs are under `data/runs/`. LM Studio returns a structured article plan and structured section blocks; application code validates and assembles them, renders deterministic Markdown and YAML front matter, and names new drafts as `blog-<padded-id>-<slug>.md`. Existing draft paths remain valid. Article content is converted to WordPress HTML only at posting time. WordPress post lookup by slug prevents duplicate posting after restart; post ID/URL/date are stored only after WordPress confirms the response.
 
 ## Review adapters and macOS permissions
 
@@ -64,7 +81,7 @@ cd WP-blog-agent
 ls -l manual-files/wordpress-blog-content-tracker.xlsx
 ```
 
-The starter tracker contains a `Blog tracker` sheet and one pending sample row with `blog_id` `1`.
+The starter tracker contains the existing posted row plus the 50-post plan (IDs `2`–`51`), a generated `Blog Formats` sheet, and a format-ID dropdown. Blog #2 is the first pending row.
 
 ### 2. Install Node dependencies
 
@@ -75,6 +92,7 @@ node --version
 npm install
 npm run lint
 npm test
+npm run formats:validate
 ```
 
 The type check and tests must pass before continuing.
@@ -115,7 +133,7 @@ Create the Application Password under the dedicated WordPress user’s profile. 
 
 ### 5. Enter the first topic in the tracker
 
-Open `manual-files/wordpress-blog-content-tracker.xlsx` in Excel or Numbers. In `Blog tracker`, add a new unique `blog_id`, enter the exact topic, set `blog_length` to the requested target word count (for example, `500` or `1500`), and select `blog_type`: `short` creates exactly 4 H1 headings, `medium` creates 6, and `long` creates 10. Keep `blog_status` as `pending`, then save. Do not change the header row; leave generated/result columns blank. The bundled workbook is already seeded with a 50-post Shibey plan (IDs `2`–`51`); use `SEO Content Plan` to review the primary query, search intent, service-page link, and CTA for each pending row.
+Open `manual-files/wordpress-blog-content-tracker.xlsx` in Excel or Numbers. In `Blog tracker`, add a new unique `blog_id`, enter the exact topic, set the independent `blog_length` target (for example, `500` or `1500`), and select a `blog_type` ID from the generated dropdown. The bundled `short`, `medium`, and `long` definitions render exactly 4, 6, and 10 H1 sections. Keep `blog_status` as `pending`, then save. Do not change the header row; leave generated/result columns blank. The bundled workbook is already seeded with a 50-post Shibey plan (IDs `2`–`51`); use `SEO Content Plan` to review the primary query, search intent, service-page link, and CTA, and use `Blog Formats` to review structural rules.
 
 ### 6. Run a safe real-LM-Studio dry-run on a copy
 
@@ -141,15 +159,15 @@ Confirm successful generation in the terminal and inspect `data/drafts/`. The re
 npm run once
 ```
 
-The agent claims row `1`, generates through LM Studio, saves a `.md` draft in `data/drafts/`, sends it to `IMESSAGE_RECIPIENT`, and changes the row to `awaiting_review`.
+The agent claims the first pending row (blog #2 in the versioned tracker), generates through LM Studio, saves a `.md` draft in `data/drafts/`, sends it to `IMESSAGE_RECIPIENT`, and changes the row to `awaiting_review`.
 
 ### 9. Approve or reject from iMessage
 
 Reply from the configured recipient with exactly:
 
 ```text
-YES 1
-NO 1
+YES 2
+NO 2
 ```
 
 Then process the reply immediately:
@@ -158,7 +176,7 @@ Then process the reply immediately:
 npm run once
 ```
 
-`YES 1` posts the WordPress draft and writes its ID/URL to the tracker only after confirmed success. `NO 1` records rejection and creates no post.
+`YES 2` posts the WordPress draft and writes its ID/URL to the tracker only after confirmed success. `NO 2` records rejection and creates no post.
 
 ### 10. Keep it running for future rows (optional)
 

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { RelayMessagesAdapter } from '../src/messaging/imessage.js';
 import { startRelayServer } from '../src/messaging/relay-server.js';
-import type { Message, MessageAdapter } from '../src/types.js';
+import type { Message, MessageAdapter } from '../src/messaging/types.js';
 
 class RecordingMessagesAdapter implements MessageAdapter {
   readonly sent: Array<{ text: string; attachment?: string }> = [];

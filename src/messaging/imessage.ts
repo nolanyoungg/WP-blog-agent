@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { promisify } from 'node:util';
-import type { Message, MessageAdapter } from '../types.js';
+import type { Message, MessageAdapter } from './types.js';
 
 const exec = promisify(execFile);
 const appleEpochMs = 978307200000;

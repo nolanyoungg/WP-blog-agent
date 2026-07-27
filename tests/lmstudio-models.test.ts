@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { selectLlmCandidates } from '../src/lmstudio/client.js';
+import { selectLlmCandidates, structuredArgumentsFromResponses } from '../src/lmstudio/client.js';
 
 test('selects only typed LLMs and prefers the loaded primary instance', () => {
   const candidates = selectLlmCandidates('openai/gpt-oss-20b', [
@@ -22,4 +22,16 @@ test('does not select an unloaded primary or any embedding fallback', () => {
     { key: 'text-embedding-nomic-embed-text-v1.5', type: 'embedding', loaded_instances: [{ id: 'text-embedding-nomic-embed-text-v1.5' }] }
   ]);
   assert.deepEqual(candidates, [{ key: 'qwen/qwen2.5-coder-14b', instanceId: 'qwen/qwen2.5-coder-14b', loaded: true }]);
+});
+
+test('extracts structured function arguments from an LM Studio Responses result', () => {
+  const body = {
+    status: 'completed',
+    output: [
+      { type: 'reasoning', content: [] },
+      { type: 'function_call', name: 'submit_wordpress_article', arguments: '{"title":"Example"}' }
+    ]
+  };
+  assert.equal(structuredArgumentsFromResponses(body, 'submit_wordpress_article'), '{"title":"Example"}');
+  assert.throws(() => structuredArgumentsFromResponses({ output: [] }, 'submit_wordpress_article'), /returned no submit_wordpress_article arguments/);
 });

@@ -9,8 +9,8 @@ export const config = (overrides: Partial<Record<string, string>> = {}) => {
   const base = get('LMSTUDIO_BASE_URL') ?? 'http://192.168.1.35:1234';
   if (!/^https?:\/\//.test(base)) throw new Error('LMSTUDIO_BASE_URL must be an HTTP(S) URL');
   return {
-    lm: { baseUrl: base.replace(/\/$/, ''), token: get('LMSTUDIO_API_TOKEN') ?? '', primaryModel: get('LMSTUDIO_PRIMARY_MODEL') ?? 'openai/gpt-oss-20b', allowFallbackLoad: (get('LMSTUDIO_ALLOW_FALLBACK_LOAD') ?? 'true') === 'true', timeoutMs: number('LMSTUDIO_TIMEOUT_MS', 120000), retryLimit: number('LMSTUDIO_RETRY_LIMIT', 1) },
-    trackerPath: path.resolve(get('TRACKER_PATH') ?? 'manual-files/wordpress-blog-content-tracker.xlsx'), draftsDir: path.resolve(get('DRAFTS_DIR') ?? 'data/drafts'), runsDir: path.resolve(get('RUNS_DIR') ?? 'data/runs'), pollIntervalMs: number('POLL_INTERVAL_MS', 60000),
+    lm: { baseUrl: base.replace(/\/$/, ''), token: get('LMSTUDIO_API_TOKEN') ?? '', primaryModel: get('LMSTUDIO_PRIMARY_MODEL') ?? 'openai/gpt-oss-20b', allowFallbackLoad: (get('LMSTUDIO_ALLOW_FALLBACK_LOAD') ?? 'true') === 'true', timeoutMs: number('LMSTUDIO_TIMEOUT_MS', 300000), maxTokens: number('LMSTUDIO_MAX_TOKENS', 6000), retryLimit: number('LMSTUDIO_RETRY_LIMIT', 3) },
+    trackerPath: path.resolve(get('TRACKER_PATH') ?? 'manual-files/wordpress-blog-content-tracker.xlsx'), formatsDir: path.resolve(get('BLOG_FORMATS_DIR') ?? 'config/blog-formats'), draftsDir: path.resolve(get('DRAFTS_DIR') ?? 'data/drafts'), runsDir: path.resolve(get('RUNS_DIR') ?? 'data/runs'), pollIntervalMs: number('POLL_INTERVAL_MS', 60000),
     messaging: {
       adapter: get('IMESSAGE_ADAPTER') ?? 'macos', recipient: get('IMESSAGE_RECIPIENT') ?? '', chatDb: expandHomeDirectory(get('IMESSAGE_CHAT_DB') ?? '~/Library/Messages/chat.db'),
       relayUrl: (get('IMESSAGE_RELAY_URL') ?? '').replace(/\/$/, ''), relayToken: get('IMESSAGE_RELAY_TOKEN') ?? '', relayTimeoutMs: number('IMESSAGE_RELAY_TIMEOUT_MS', 30_000),

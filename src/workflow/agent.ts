@@ -1,13 +1,16 @@
 import { existsSync } from 'node:fs';
 import type { config as configFactory } from '../config/index.js';
 import { requireWordPress } from '../config/index.js';
-import { saveDraft, parseDraft, promptFor, validateGeneratedArticle } from '../generation/blog.js';
+import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePlan, parseArticleSection, promptForArticlePlan, promptForArticleSection } from '../generation/article-generator.js';
+import { ArticleFormatRegistry } from '../generation/article-format-registry.js';
+import { parseDraft, renderAndValidateArticle, saveDraft, validateStructuredSection } from '../generation/article-markdown-renderer.js';
 import { LMStudioClient } from '../lmstudio/client.js';
 import { parseReview } from '../messaging/imessage.js';
 import { RunLog } from '../log.js';
-import { ExcelTracker } from '../tracker/excel.js';
+import { ExcelTracker } from '../tracker/excel-tracker.js';
 import { WordPressClient } from '../wordpress/client.js';
-import type { BlogRow, MessageAdapter } from '../types.js';
+import type { BlogRow } from '../domain/blog.js';
+import type { MessageAdapter } from '../messaging/types.js';
 
 type Settings = ReturnType<typeof configFactory>;
 
@@ -15,11 +18,13 @@ export class BlogWorkflow {
   private readonly tracker: ExcelTracker;
   private readonly log: RunLog;
   private readonly lm: LMStudioClient;
+  private readonly formats: Promise<ArticleFormatRegistry>;
 
   constructor(private readonly settings: Settings, private readonly messages: MessageAdapter, private readonly dryRun: boolean) {
     this.tracker = new ExcelTracker(settings.trackerPath);
     this.log = new RunLog(settings.runsDir);
     this.lm = new LMStudioClient(settings.lm, this.log);
+    this.formats = ArticleFormatRegistry.load(settings.formatsDir);
   }
 
   private async notify(text: string, attachment?: string) {
@@ -90,16 +95,40 @@ export class BlogWorkflow {
       const approved = (await this.tracker.rows()).find(row => row.blog_status === 'approved');
       if (approved) { await this.log.write('workflow.resuming_approved_post', { blog_id: approved.blog_id }); await this.postApproved(approved.blog_id); return; }
     }
-    const row = await this.tracker.claimNext();
+    const formats = await this.formats;
+    const row = await this.tracker.claimNext(new Set(formats.ids()));
     if (!row) { await this.log.write('workflow.no_pending_rows'); return; }
     try {
       await this.log.write('workflow.generation_started', { blog_id: row.blog_id });
-      const generated = await this.lm.generate(promptFor(row), markdown => validateGeneratedArticle(row, markdown));
-      const draft = await saveDraft(this.settings.draftsDir, row, generated.markdown, generated.model);
+      const format = formats.get(row.blog_type);
+      const plan = await this.lm.generateStructured(promptForArticlePlan(row, format), articlePlanResponseSchema(format), text => parseArticlePlan(text, format));
+      const sections = [];
+      const models = new Set([plan.model]);
+      for (let index = 0; index < format.sections.length; index++) {
+        const definition = format.sections[index];
+        const target = Math.round(row.blog_length! * definition.word_percentage / 100);
+        await this.log.write('workflow.section_generation_started', { blog_id: row.blog_id, section: definition.key, section_index: index + 1 });
+        const generated = await this.lm.generateStructured(
+          promptForArticleSection(row, format, plan.value, index),
+          articleSectionResponseSchema(definition),
+          text => {
+            const section = { heading: plan.value.headings[index], blocks: parseArticleSection(text, definition) };
+            validateStructuredSection(target, definition, section, index);
+            return section;
+          }
+        );
+        models.add(generated.model);
+        sections.push(generated.value);
+        await this.log.write('workflow.section_generation_succeeded', { blog_id: row.blog_id, section: definition.key, section_index: index + 1, model: generated.model });
+      }
+      const model = [...models].join(', ');
+      const article = { ...plan.value, sections };
+      const markdown = renderAndValidateArticle(row, format, article);
+      const draft = await saveDraft(this.settings.draftsDir, row, markdown, model);
       const requestedAt = new Date().toISOString();
-      await this.tracker.update(row.blog_id, { blog_status: 'awaiting_review', review_status: 'pending', review_token: `YES ${row.blog_id} / NO ${row.blog_id}`, markdown_path: draft, model_used: generated.model, blog_created_date: requestedAt });
+      await this.tracker.update(row.blog_id, { blog_status: 'awaiting_review', review_status: 'pending', review_token: `YES ${row.blog_id} / NO ${row.blog_id}`, markdown_path: draft, model_used: model, blog_created_date: requestedAt });
       await this.notify(`Blog draft #${row.blog_id} is ready: “${row.blog_topic}”\n\nReply exactly:\nYES ${row.blog_id} — post it to WordPress\nNO ${row.blog_id} — reject and stop`, draft);
-      await this.log.write('workflow.awaiting_review', { blog_id: row.blog_id, draft, model: generated.model, review_requested_at: requestedAt });
+      await this.log.write('workflow.awaiting_review', { blog_id: row.blog_id, draft, model, review_requested_at: requestedAt });
     } catch (error) {
       await this.tracker.update(row.blog_id, { blog_status: 'error' });
       await this.notify(`Blog #${row.blog_id} could not be generated: ${String(error)}`);

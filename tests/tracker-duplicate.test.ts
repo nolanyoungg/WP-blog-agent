@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import * as XLSX from 'xlsx';
-import { ExcelTracker } from '../src/tracker/excel.js';
+import { ExcelTracker } from '../src/tracker/excel-tracker.js';
 
 test('refuses duplicate blog IDs before selecting a row', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'wp-blog-agent-'));

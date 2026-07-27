@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import type { WordPressPost } from '../types.js';
+import type { WordPressPost } from '../domain/blog.js';
 export class WordPressClient {
   constructor(private readonly settings: { baseUrl: string; username: string; password: string; status: string; allowHttp: boolean }) {}
   private headers() { return { authorization: `Basic ${Buffer.from(`${this.settings.username}:${this.settings.password}`).toString('base64')}`, 'content-type': 'application/json' }; }
