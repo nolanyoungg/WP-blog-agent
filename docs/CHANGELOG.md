@@ -13,12 +13,14 @@
 - A bottom-of-README `Full First Instructions` walkthrough from cloning through first iMessage approval and WordPress draft creation.
 - Draft normalization for fenced YAML metadata emitted by a real LM Studio model response.
 - Timestamped review requests so stale iMessage decisions are ignored.
+- `blog_length` word targets and `blog_type` format choices in the tracker. `short`, `medium`, and `long` require exactly 4, 6, and 10 H1 headings respectively.
 
 ### Changed
 
 - Expanded the repository from its initial description into a documented application.
 - LM Studio fallback selection now uses only typed LLM entries from `/api/v1/models`; embedding models cannot be selected.
 - A successful WordPress draft creation is recorded in the tracker and run log, then confirmed by iMessage with `Draft posted!` and its WordPress link.
+- Condensed the tracker to its 13 requested columns and moved `blog_length` and `blog_type` directly after `blog_topic`; removed tracker-only error and timestamp columns in favor of the JSONL run log.
 
 ### Fixed
 
@@ -40,3 +42,4 @@
 - The built application successfully reads the starter workbook and its pending first row.
 - A real dry-run against a copied workbook completed with `openai/gpt-oss-20b`, created a draft, recorded a review timestamp, and left iMessage and WordPress untouched.
 - Regression tests prove stale review replies and duplicate tracker IDs are rejected.
+- A real LM Studio dry-run with `openai/gpt-oss-20b` used an isolated 500-word `short` tracker row. Its first five-H1 result was rejected; the automatic retry produced 460 words and exactly four H1 headings, with no iMessage or WordPress activity.

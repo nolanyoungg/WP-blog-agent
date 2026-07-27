@@ -57,7 +57,7 @@ export class LMStudioClient {
     return text.trim();
   }
 
-  async generate(prompt: string): Promise<{ markdown: string; model: string }> {
+  async generate(prompt: string, validate?: (markdown: string) => void): Promise<{ markdown: string; model: string }> {
     await this.health();
     const candidates = selectLlmCandidates(this.settings.primaryModel, await this.nativeModels());
     if (!candidates.some(candidate => candidate.key === this.settings.primaryModel)) await this.log.write('lmstudio.primary_not_loaded', { model: this.settings.primaryModel });
@@ -69,6 +69,7 @@ export class LMStudioClient {
         for (let attempt = 0; attempt <= this.settings.retryLimit; attempt++) {
           try {
             const markdown = await this.completion(model, prompt);
+            validate?.(markdown);
             await this.log.write('lmstudio.generation_succeeded', { model, attempt });
             return { markdown, model };
           } catch (error) {

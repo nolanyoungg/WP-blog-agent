@@ -1,9 +1,10 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { BlogRow } from '../types.js';
+import type { BlogRow, BlogType } from '../types.js';
 
 const slugify = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'blog';
 type FrontMatter = Record<string, string | string[]>;
+const h1CountByBlogType: Record<BlogType, number> = { short: 4, medium: 6, long: 10 };
 
 const splitFrontMatter = (raw: string) => {
   const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
@@ -38,7 +39,26 @@ const parseFrontMatter = (front: string): FrontMatter => {
   return result;
 };
 
-export const promptFor = (topic: string) => `Create a polished, factual and original WordPress blog article about: ${topic}\n\nReturn Markdown only. Begin with literal YAML front matter delimited by a line containing --- before and after it; never wrap the YAML in a code fence. The front matter must contain title, excerpt, slug, categories, and tags. Then use this structure: # Title, a one-paragraph meta description, ## Introduction, multiple ## Main sections, ## Practical steps or examples, and ## Conclusion. Do not add citations unless you can support them from the prompt; do not invent facts.`;
+export const promptFor = (row: Pick<BlogRow, 'blog_topic' | 'blog_length' | 'blog_type'>) => {
+  if (!row.blog_length) throw new Error('blog_length must be a positive whole-number word target');
+  if (!row.blog_type) throw new Error('blog_type must be short, medium, or long');
+  const h1Count = h1CountByBlogType[row.blog_type];
+  const headingSkeleton = Array.from({ length: h1Count }, (_, index) => `# ${index === 0 ? 'Article title' : `Section ${index}`}`).join('\n');
+  return `Create a polished, factual and original WordPress blog article about: ${row.blog_topic}\n\nReturn Markdown only. Begin with literal YAML front matter delimited by a line containing --- before and after it; never wrap the YAML in a code fence. The front matter must contain title, excerpt, slug, categories, and tags. The article body must target ${row.blog_length} words, excluding the YAML front matter. This is a ${row.blog_type} blog, so it MUST contain exactly ${h1Count} level-one Markdown headings (lines beginning with \"# \"), including the article title. Do not use any \"##\" or deeper headings. Replace every placeholder in this required heading skeleton with meaningful copy and do not add or remove a heading:\n${headingSkeleton}\n\nWrite paragraphs and practical steps under those headings, ending with a conclusion in the final section. Do not add citations unless you can support them from the prompt; do not invent facts.`;
+};
+
+export const validateGeneratedArticle = (row: Pick<BlogRow, 'blog_length' | 'blog_type'>, markdown: string) => {
+  if (!row.blog_length || !row.blog_type) throw new Error('blog_length and blog_type are required to validate an article');
+  const trimmed = markdown.trim();
+  const withFrontMatter = splitFrontMatter(trimmed);
+  const generated = withFrontMatter.front ? withFrontMatter : splitFencedYaml(trimmed);
+  const h1Count = (generated.body.match(/^#\s+.+$/gm) ?? []).length;
+  const expectedH1Count = h1CountByBlogType[row.blog_type];
+  if (h1Count !== expectedH1Count) throw new Error(`Expected exactly ${expectedH1Count} H1 headings for blog_type ${row.blog_type}, received ${h1Count}`);
+  const wordCount = generated.body.split(/\s+/).filter(token => /[\p{L}\p{N}]/u.test(token)).length;
+  const tolerance = Math.max(75, Math.round(row.blog_length * 0.15));
+  if (Math.abs(wordCount - row.blog_length) > tolerance) throw new Error(`Expected ${row.blog_length} words within ${tolerance}, received ${wordCount}`);
+};
 
 export const saveDraft = async (dir: string, row: BlogRow, markdown: string, model: string) => {
   await mkdir(dir, { recursive: true });
@@ -46,7 +66,7 @@ export const saveDraft = async (dir: string, row: BlogRow, markdown: string, mod
   const trimmed = markdown.trim();
   const withFrontMatter = splitFrontMatter(trimmed);
   const generated = withFrontMatter.front ? withFrontMatter : splitFencedYaml(trimmed);
-  const provenance = `blog_id: "${row.blog_id}"\ntopic: "${row.blog_topic.replaceAll('"', '\\"')}"\ngenerated_at: "${new Date().toISOString()}"\nmodel_used: "${model}"\nreview_status: pending`;
+  const provenance = `blog_id: "${row.blog_id}"\ntopic: "${row.blog_topic.replaceAll('"', '\\"')}"\nblog_length: "${row.blog_length ?? ''}"\nblog_type: "${row.blog_type ?? ''}"\ngenerated_at: "${new Date().toISOString()}"\nmodel_used: "${model}"\nreview_status: pending`;
   await writeFile(file, `---\n${provenance}${generated.front ? `\n${generated.front}` : ''}\n---\n\n${generated.body.trim()}\n`, 'utf8');
   return file;
 };

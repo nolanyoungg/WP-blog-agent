@@ -15,7 +15,7 @@ cp .env.example .env
 
 Set the iMessage recipient, tracker location, WordPress URL/user/application password, and keep `WORDPRESS_POST_STATUS=draft` unless intentional publication is required. HTTPS is enforced unless `WORDPRESS_ALLOW_HTTP=true` is explicitly set for local development. Do not commit `.env`, drafts, logs, or workbooks.
 
-The workbook has a `Blog tracker` sheet with `blog_id`, `blog_topic`, `blog_status`, `blog_created_date`, and `blog_posted_date`. The agent safely adds or maintains its operational columns, preserves source topics, atomically writes a validated temporary workbook, and uses an exclusive sidecar lock to prevent two workers claiming the same pending row.
+The workbook has a `Blog tracker` sheet with exactly these columns: `blog_id`, `blog_topic`, `blog_length`, `blog_type`, `blog_status`, `blog_created_date`, `blog_posted_date`, `markdown_path`, `review_status`, `review_token`, `model_used`, `wordpress_post_id`, and `wordpress_url`. `blog_length` is the target body-word count. `blog_type` must be `short` (exactly 4 H1 headings), `medium` (6 H1 headings), or `long` (10 H1 headings). Before a draft can be reviewed, the agent verifies the exact H1 count and that the word count is within 15% of the target (with a minimum 75-word tolerance), retrying generation once if needed. The agent atomically writes a validated temporary workbook and uses an exclusive sidecar lock to prevent two workers claiming the same pending row.
 
 ## LM Studio behavior
 
@@ -115,7 +115,7 @@ Create the Application Password under the dedicated WordPress user’s profile. 
 
 ### 5. Enter the first topic in the tracker
 
-Open `manual-files/wordpress-blog-content-tracker.xlsx` in Excel or Numbers. In `Blog tracker`, replace the sample row’s `blog_topic` with the exact first topic. Keep `blog_id` as `1` and `blog_status` as `pending`, then save. Do not change the header row; leave generated/result columns blank.
+Open `manual-files/wordpress-blog-content-tracker.xlsx` in Excel or Numbers. In `Blog tracker`, replace the sample row’s `blog_topic` with the exact first topic, set `blog_length` to the requested target word count (for example, `500` or `1500`), and select `blog_type`: `short` creates exactly 4 H1 headings, `medium` creates 6, and `long` creates 10. Keep `blog_id` unique and `blog_status` as `pending`, then save. Do not change the header row; leave generated/result columns blank.
 
 ### 6. Run a safe real-LM-Studio dry-run on a copy
 
@@ -162,7 +162,7 @@ npm run once
 
 ### 10. Keep it running for future rows (optional)
 
-After the first post, add a row with a unique `blog_id`, next `blog_topic`, and `blog_status` `pending`, then run:
+After the first post, add a row with a unique `blog_id`, next `blog_topic`, requested `blog_length`, selected `blog_type`, and `blog_status` `pending`, then run:
 
 ```sh
 npm run worker

@@ -1,11 +1,15 @@
 import { mkdir, open, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import XLSX from 'xlsx';
-import type { BlogRow, BlogStatus } from '../types.js';
+import type { BlogRow, BlogStatus, BlogType } from '../types.js';
 
 const sheetName = 'Blog tracker';
-const required = ['blog_id', 'blog_topic', 'blog_status', 'blog_created_date', 'blog_posted_date'];
-const iso = () => new Date().toISOString();
+const required = ['blog_id', 'blog_topic', 'blog_length', 'blog_type', 'blog_status', 'blog_created_date', 'blog_posted_date'];
+const blogType = (value: unknown): BlogType | undefined => ['short', 'medium', 'long'].includes(String(value).toLowerCase()) ? String(value).toLowerCase() as BlogType : undefined;
+const blogLength = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+};
 
 export class ExcelTracker {
   constructor(readonly file: string) {}
@@ -39,7 +43,7 @@ export class ExcelTracker {
 
   async rows(): Promise<BlogRow[]> {
     const { rows } = this.read();
-    return rows.map((row, index) => ({ ...row, row: index + 2, blog_id: String(row.blog_id), blog_topic: String(row.blog_topic), blog_status: String(row.blog_status) as BlogStatus }));
+    return rows.map((row, index) => ({ ...row, row: index + 2, blog_id: String(row.blog_id), blog_topic: String(row.blog_topic), blog_length: blogLength(row.blog_length), blog_type: blogType(row.blog_type), blog_status: String(row.blog_status) as BlogStatus }));
   }
 
   async claimNext(): Promise<BlogRow | undefined> {
@@ -48,9 +52,9 @@ export class ExcelTracker {
       const index = rows.findIndex(row => String(row.blog_status).toLowerCase() === 'pending');
       if (index < 0) return undefined;
       const row = index + 2;
-      this.setCells(sheet, row, { blog_status: 'generating', review_status: 'pending', last_error: '', last_updated_at: iso() });
+      this.setCells(sheet, row, { blog_status: 'generating', review_status: 'pending' });
       await this.atomic(book);
-      return { ...rows[index], row, blog_id: String(rows[index].blog_id), blog_topic: String(rows[index].blog_topic), blog_status: 'generating' as BlogStatus };
+      return { ...rows[index], row, blog_id: String(rows[index].blog_id), blog_topic: String(rows[index].blog_topic), blog_length: blogLength(rows[index].blog_length), blog_type: blogType(rows[index].blog_type), blog_status: 'generating' as BlogStatus };
     });
   }
 
@@ -59,7 +63,7 @@ export class ExcelTracker {
       const { book, sheet, rows } = this.read();
       const index = rows.findIndex(row => String(row.blog_id) === String(blogId));
       if (index < 0) throw new Error(`blog_id ${blogId} no longer exists in tracker`);
-      this.setCells(sheet, index + 2, { ...changes, last_updated_at: iso() });
+      this.setCells(sheet, index + 2, changes);
       await this.atomic(book);
     });
   }
