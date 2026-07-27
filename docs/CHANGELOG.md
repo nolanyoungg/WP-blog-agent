@@ -26,6 +26,7 @@
 - Resumed `approved` rows after a restart instead of leaving them stranded before WordPress posting.
 - Rejected duplicate `blog_id` values before a tracker operation can target the wrong row.
 - Explicitly coerce direct-macOS review attachments to an AppleScript file alias before handing them to Messages.
+- Expand `$HOME` as well as `~` in `IMESSAGE_CHAT_DB`, so the documented default opens the real Messages database instead of a literal `$HOME` path.
 
 ### Removed
 

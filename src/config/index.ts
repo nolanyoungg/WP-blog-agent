@@ -3,6 +3,7 @@ import path from 'node:path';
 
 const bool = (name: string, fallback = false) => (process.env[name] ?? String(fallback)).toLowerCase() === 'true';
 const number = (name: string, fallback: number) => { const value = Number(process.env[name] ?? fallback); if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be a non-negative number`); return value; };
+const expandHomeDirectory = (value: string) => value.replace(/^(?:~|\$HOME)(?=\/|$)/, process.env.HOME ?? '');
 export const config = (overrides: Partial<Record<string, string>> = {}) => {
   const get = (name: string) => overrides[name] ?? process.env[name];
   const base = get('LMSTUDIO_BASE_URL') ?? 'http://192.168.1.35:1234';
@@ -11,7 +12,7 @@ export const config = (overrides: Partial<Record<string, string>> = {}) => {
     lm: { baseUrl: base.replace(/\/$/, ''), token: get('LMSTUDIO_API_TOKEN') ?? '', primaryModel: get('LMSTUDIO_PRIMARY_MODEL') ?? 'openai/gpt-oss-20b', allowFallbackLoad: (get('LMSTUDIO_ALLOW_FALLBACK_LOAD') ?? 'true') === 'true', timeoutMs: number('LMSTUDIO_TIMEOUT_MS', 120000), retryLimit: number('LMSTUDIO_RETRY_LIMIT', 1) },
     trackerPath: path.resolve(get('TRACKER_PATH') ?? 'manual-files/wordpress-blog-content-tracker.xlsx'), draftsDir: path.resolve(get('DRAFTS_DIR') ?? 'data/drafts'), runsDir: path.resolve(get('RUNS_DIR') ?? 'data/runs'), pollIntervalMs: number('POLL_INTERVAL_MS', 60000),
     messaging: {
-      adapter: get('IMESSAGE_ADAPTER') ?? 'macos', recipient: get('IMESSAGE_RECIPIENT') ?? '', chatDb: (get('IMESSAGE_CHAT_DB') ?? '~/Library/Messages/chat.db').replace(/^~/, process.env.HOME ?? ''),
+      adapter: get('IMESSAGE_ADAPTER') ?? 'macos', recipient: get('IMESSAGE_RECIPIENT') ?? '', chatDb: expandHomeDirectory(get('IMESSAGE_CHAT_DB') ?? '~/Library/Messages/chat.db'),
       relayUrl: (get('IMESSAGE_RELAY_URL') ?? '').replace(/\/$/, ''), relayToken: get('IMESSAGE_RELAY_TOKEN') ?? '', relayTimeoutMs: number('IMESSAGE_RELAY_TIMEOUT_MS', 30_000),
       relayListenHost: get('IMESSAGE_RELAY_LISTEN_HOST') ?? '127.0.0.1', relayListenPort: number('IMESSAGE_RELAY_LISTEN_PORT', 8787)
     },
