@@ -6,7 +6,7 @@ A local-first blog workflow. It selects one `pending` row from `manual-files/wor
 
 - Node.js 22+ and npm. The direct Messages adapter requires macOS. Windows can run the workflow with the optional remote iMessage relay described below.
 - LM Studio server reachable at `http://192.168.1.35:1234`, with `openai/gpt-oss-20b` installed. Set an optional LM Studio API token in the environment.
-- WordPress Application Password for a dedicated account; never use a regular password.
+- WordPress Application Password for a dedicated account that can create and edit posts (normally an Author or Editor); never use a regular password.
 
 ```sh
 npm install
@@ -111,7 +111,7 @@ WORDPRESS_APPLICATION_PASSWORD=your-wordpress-application-password
 WORDPRESS_POST_STATUS=draft
 ```
 
-Create the Application Password under the dedicated WordPress user’s profile; never use its normal login password. Save Nano with `Control-O`, `Return`, then `Control-X`. Never commit `.env`.
+Create the Application Password under the dedicated WordPress user’s profile. That user must be able to create and edit posts (normally Author or Editor); a Subscriber account cannot post through the REST API. Never use its normal login password. Save Nano with `Control-O`, `Return`, then `Control-X`. Never commit `.env`.
 
 ### 5. Enter the first topic in the tracker
 

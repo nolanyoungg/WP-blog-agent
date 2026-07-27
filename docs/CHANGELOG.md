@@ -27,6 +27,7 @@
 - Rejected duplicate `blog_id` values before a tracker operation can target the wrong row.
 - Explicitly coerce direct-macOS review attachments to an AppleScript file alias before handing them to Messages.
 - Expand `$HOME` as well as `~` in `IMESSAGE_CHAT_DB`, so the documented default opens the real Messages database instead of a literal `$HOME` path.
+- Use the WordPress REST API's status-array query format when checking whether an approved draft was already posted, and include the WordPress error body when that check fails.
 
 ### Removed
 
