@@ -4,6 +4,7 @@
 
 ### Added
 
+- A 50-post, service-led Shibey SEO content plan in the versioned tracker. Each pending tracker row has a unique ID, SEO-focused title, target length, and article size; the companion `SEO Content Plan` sheet maps every post to a primary query, intent, funnel stage, relevant Shibey service page, and CTA.
 - A reusable three-machine runbook for running the workflow from Home Windows, Messages from a Home Intel Mac, and LM Studio from a Work Mac over a private encrypted network.
 - Optional authenticated iMessage relay add-on for a Windows workflow and a separate Mac signed into Messages. It transports review messages, attached Markdown drafts, and current replies without changing LM Studio generation, tracker ownership, or WordPress posting behavior.
 - `npm run relay`, relay environment settings, deterministic relay transport coverage, and a launchd example for the home-Mac relay process.
@@ -17,6 +18,7 @@
 
 ### Changed
 
+- The versioned tracker is now a populated editorial plan rather than a single pending sample row. The runtime continues to read only the exact `Blog tracker` schema; `SEO Content Plan` is planning context for people.
 - Expanded the repository from its initial description into a documented application.
 - LM Studio fallback selection now uses only typed LLM entries from `/api/v1/models`; embedding models cannot be selected.
 - A successful WordPress draft creation is recorded in the tracker and run log, then confirmed by iMessage with `Draft posted!` and its WordPress link.
@@ -37,6 +39,7 @@
 
 ### Tested
 
+- The workbook was re-imported after writing: `Blog tracker` contains the original posted row plus 50 pending rows (IDs `2`–`51`), `SEO Content Plan` contains all 50 mapped posts, its three summary formulas resolve to 50 posts / 62,600 words / 1,252 average words, and the workbook has no formula errors.
 - `npm run lint` and `npm test` are the required deterministic validation commands.
 - Relay tests verify bearer-token enforcement, temporary attachment transport, and review-reply round trips without invoking a model provider.
 - The built application successfully reads the starter workbook and its pending first row.
