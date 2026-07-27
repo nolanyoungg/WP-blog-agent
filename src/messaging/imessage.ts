@@ -30,7 +30,7 @@ export class MacOSMessagesAdapter implements MessageAdapter {
     const recipient = escapeAppleScript(this.recipient);
     const message = escapeAppleScript(text);
     const script = attachment
-      ? `tell application "Messages"\nset targetService to 1st service whose service type = iMessage\nset targetBuddy to buddy "${recipient}" of targetService\nsend "${message}" to targetBuddy\nsend POSIX file "${escapeAppleScript(attachment)}" to targetBuddy\nend tell`
+      ? `set attachmentFile to (POSIX file "${escapeAppleScript(attachment)}") as alias\ntell application "Messages"\nset targetService to 1st service whose service type = iMessage\nset targetBuddy to buddy "${recipient}" of targetService\nsend "${message}" to targetBuddy\nsend attachmentFile to targetBuddy\nend tell`
       : `tell application "Messages" to send "${message}" to buddy "${recipient}" of (1st service whose service type = iMessage)`;
     await exec('osascript', ['-e', script]);
   }

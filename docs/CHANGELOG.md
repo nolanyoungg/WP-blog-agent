@@ -25,6 +25,7 @@
 - Corrected CLI script paths to use TypeScript’s emitted `dist/src/cli/index.js` entry point.
 - Resumed `approved` rows after a restart instead of leaving them stranded before WordPress posting.
 - Rejected duplicate `blog_id` values before a tracker operation can target the wrong row.
+- Explicitly coerce direct-macOS review attachments to an AppleScript file alias before handing them to Messages.
 
 ### Removed
 
