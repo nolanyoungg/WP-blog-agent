@@ -75,7 +75,7 @@ export class BlogWorkflow {
       if (this.dryRun) { await this.log.write('wordpress.skipped_dry_run', { blog_id: blogId }); return; }
       const post = await new WordPressClient(requireWordPress(this.settings)).post(await parseDraft(row.markdown_path));
       await this.tracker.update(blogId, { blog_status: 'posted', blog_posted_date: new Date().toISOString(), wordpress_post_id: String(post.id), wordpress_url: post.link });
-      await this.notify(`Blog #${blogId} was posted successfully: ${post.link}`);
+      await this.log.write('wordpress.posted', { blog_id: blogId, wordpress_post_id: post.id, wordpress_url: post.link });
     } catch (error) {
       await this.tracker.update(blogId, { blog_status: 'error', last_error: String(error) });
       await this.notify(`Blog #${blogId} could not be posted: ${String(error)}`);

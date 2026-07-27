@@ -18,6 +18,7 @@
 
 - Expanded the repository from its initial description into a documented application.
 - LM Studio fallback selection now uses only typed LLM entries from `/api/v1/models`; embedding models cannot be selected.
+- A successful WordPress draft creation is now recorded in the tracker and run log without sending a follow-up iMessage containing its link.
 
 ### Fixed
 
