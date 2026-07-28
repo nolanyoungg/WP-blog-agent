@@ -62,9 +62,11 @@
 ### Removed
 
 - The hard-coded format union, fixed heading-count map, vague `generation/blog.ts`, `tracker/excel.ts`, and combined `types.ts` modules.
+- Accidental macOS `.DS_Store` metadata from version control; the ignore rules now prevent it from being recommitted.
 
 ### Tested
 
+- Merged the PDF iMessage attachment work into `main`; `npm run lint` completed successfully and all 20 deterministic tests passed.
 - A real Blog #12 PDF was rendered to three letter-size pages and every page was visually inspected for clipping, overlap, heading orphans, blank pages, and footer correctness.
 - A controlled send to the configured recipient produced an `application/pdf` Messages row with `error=0`, `is_sent=1`, `is_delivered=1`, and a clean temporary outbox; the earlier `.txt` attempts remain recorded as `error=25`, `is_sent=0`.
 - A real isolated 1,500-word `long` dry-run with `openai/gpt-oss-20b` completed all ten sections, rendered matching Markdown and a four-page PDF, logged the PDF as the skipped dry-run attachment, and left the copied tracker at `awaiting_review` without sending iMessage or touching WordPress.
