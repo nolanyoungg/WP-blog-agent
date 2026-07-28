@@ -24,6 +24,7 @@
 
 ### Changed
 
+- The versioned tracker now records Blog #18's confirmed generation error and Blog #21's completed real-model draft as awaiting review, without changing the SEO plan or format reference sheets.
 - Review delivery now preserves Markdown for WordPress, renders a same-basename PDF for the recipient, sends the PDF before the ready text, and records `imessage.sent` only after Messages reports that attachment as sent or delivered.
 - The relay request timeout now defaults to 90 seconds so it remains longer than the Mac's 60-second attachment confirmation window.
 - Replaced the hard-coded `short | medium | long` TypeScript union and heading-count map with format IDs discovered from definition files. Future formats and section counts require no TypeScript change.
@@ -67,6 +68,8 @@
 ### Tested
 
 - Merged the PDF iMessage attachment work into `main`; `npm run lint` completed successfully and all 20 deterministic tests passed.
+- The final tracker snapshot was stable after the worker stopped, re-imported successfully, retained all three sheets and the `BlogFormatIds` name, and contained no formula-error values.
+- A real LM Studio run for Blog #21 completed all ten sections, created 10,195-byte Markdown and 11,670-byte PDF artifacts, delivered the PDF through Messages, and finished at `awaiting_review`; the run log and tracker agree on the completion timestamp and selected models.
 - A real Blog #12 PDF was rendered to three letter-size pages and every page was visually inspected for clipping, overlap, heading orphans, blank pages, and footer correctness.
 - A controlled send to the configured recipient produced an `application/pdf` Messages row with `error=0`, `is_sent=1`, `is_delivered=1`, and a clean temporary outbox; the earlier `.txt` attempts remain recorded as `error=25`, `is_sent=0`.
 - A real isolated 1,500-word `long` dry-run with `openai/gpt-oss-20b` completed all ten sections, rendered matching Markdown and a four-page PDF, logged the PDF as the skipped dry-run attachment, and left the copied tracker at `awaiting_review` without sending iMessage or touching WordPress.
