@@ -55,7 +55,7 @@ Markdown source is saved under `data/drafts/`; JSONL logs are under `data/runs/`
 
 ## Review adapters and macOS permissions
 
-The attached draft asks the recipient to reply exactly `YES <blog_id>` or `NO <blog_id>` (case-insensitive). Messages from other senders and malformed, stale, or ambiguous text are ignored. `NO` records rejection and sends a confirmation; `YES` posts the matching approved draft, then sends `Draft posted!` with its WordPress link. Posting errors are also sent by iMessage.
+The attached draft asks the recipient to reply exactly `YES <blog_id>` or `NO <blog_id>` (case-insensitive). On direct macOS Messages runs, the Markdown draft is sent as a same-content `.txt` attachment for reliable iMessage delivery. Messages from other senders and malformed, stale, or ambiguous text are ignored. `NO` records rejection and sends a confirmation; `YES` posts the matching approved draft, then sends `Draft posted!` with its WordPress link. Posting errors are also sent by iMessage.
 
 Set `IMESSAGE_ADAPTER=macos` to use Messages directly on the machine running the workflow. Sign into Messages first. macOS will request permission for the terminal/launch agent to automate Messages; allow it. Reading replies queries `~/Library/Messages/chat.db`, so grant the executing terminal or launch service **Full Disk Access** in System Settings → Privacy & Security. `IMESSAGE_CHAT_DB` accepts either `$HOME/Library/Messages/chat.db` or `~/Library/Messages/chat.db`. Use `IMESSAGE_ADAPTER=dry-run` before allowing real sends.
 

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { readFile, stat } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { copyFile, readFile, stat } from 'node:fs/promises';
+import { basename, dirname, extname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { Message, MessageAdapter } from './types.js';
 
@@ -13,6 +13,16 @@ const sqlString = (value: string) => `'${value.replaceAll("'", "''")}'`;
 export const parseReview = (text: string) => {
   const match = text.trim().match(/^(YES|NO)\s+(\S+)$/i);
   return match ? { decision: match[1].toLowerCase() === 'yes' ? 'approved' as const : 'rejected' as const, blogId: match[2] } : undefined;
+};
+
+// Messages records .md review files as text/markdown, which can remain undelivered
+// even though the accompanying text message arrives. A .txt copy keeps the exact
+// article content while using the broadly supported text/plain attachment type.
+export const macOSReviewAttachment = async (path: string) => {
+  if (extname(path).toLowerCase() !== '.md') return path;
+  const readablePath = join(dirname(path), `${basename(path, extname(path))}.txt`);
+  await copyFile(path, readablePath);
+  return readablePath;
 };
 
 export class DryRunMessageAdapter implements MessageAdapter {
@@ -29,8 +39,9 @@ export class MacOSMessagesAdapter implements MessageAdapter {
   async send(text: string, attachment?: string) {
     const recipient = escapeAppleScript(this.recipient);
     const message = escapeAppleScript(text);
+    const reviewAttachment = attachment ? await macOSReviewAttachment(attachment) : undefined;
     const script = attachment
-      ? `set attachmentFile to (POSIX file "${escapeAppleScript(attachment)}") as alias\ntell application "Messages"\nset targetService to 1st service whose service type = iMessage\nset targetBuddy to buddy "${recipient}" of targetService\nsend "${message}" to targetBuddy\nsend attachmentFile to targetBuddy\nend tell`
+      ? `set attachmentFile to (POSIX file "${escapeAppleScript(reviewAttachment!)}") as alias\ntell application "Messages"\nset targetService to 1st service whose service type = iMessage\nset targetBuddy to buddy "${recipient}" of targetService\nsend "${message}" to targetBuddy\nsend attachmentFile to targetBuddy\nend tell`
       : `tell application "Messages" to send "${message}" to buddy "${recipient}" of (1st service whose service type = iMessage)`;
     await exec('osascript', ['-e', script]);
   }
