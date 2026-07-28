@@ -30,3 +30,8 @@ test('resolves editorial guidance and checkpoint configuration', () => {
   assert.equal(settings.editorialGuidancePath, path.resolve('config/editorial-guidance.json'));
   assert.equal(settings.checkpointsDir, path.resolve('data/checkpoints'));
 });
+
+test('fallback models are disabled unless explicitly enabled', () => {
+  assert.equal(config({ LMSTUDIO_ALLOW_FALLBACK_MODELS: 'false' }).lm.allowFallbackModels, false);
+  assert.equal(config({ LMSTUDIO_ALLOW_FALLBACK_MODELS: 'true' }).lm.allowFallbackModels, true);
+});

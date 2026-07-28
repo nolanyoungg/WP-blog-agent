@@ -11,6 +11,7 @@ export interface SectionGenerationContract {
   minimumWords: number;
   maximumWords: number;
   paragraphCount: number;
+  targetWordsPerParagraph: number;
   minimumWordsPerParagraph: number;
   maximumWordsPerParagraph: number;
   paragraphKeys: string[];
@@ -21,16 +22,24 @@ export const sectionGenerationContract = (targetWords: number, section: ArticleF
   const minimumWords = Math.max(1, targetWords - tolerance);
   const maximumWords = targetWords + tolerance;
   const paragraphCount = Math.max(section.min_paragraphs, Math.min(section.max_paragraphs, Math.ceil(targetWords / 100)));
-  const minimumWordsPerParagraph = Math.max(section.min_words_per_paragraph, Math.ceil(minimumWords / paragraphCount));
-  const maximumWordsPerParagraph = Math.min(section.max_words_per_paragraph, Math.floor(maximumWords / paragraphCount));
-  if (minimumWordsPerParagraph > maximumWordsPerParagraph) {
-    throw new Error(`Section target ${targetWords} cannot satisfy ${paragraphCount} paragraphs within the configured paragraph limits`);
+  const minimumWordsPerParagraph = section.min_words_per_paragraph;
+  const maximumWordsPerParagraph = section.max_words_per_paragraph;
+  const targetWordsPerParagraph = Math.max(
+    minimumWordsPerParagraph,
+    Math.min(maximumWordsPerParagraph, Math.round(targetWords / paragraphCount))
+  );
+  if (
+    minimumWordsPerParagraph * paragraphCount > maximumWords
+    || maximumWordsPerParagraph * paragraphCount < minimumWords
+  ) {
+    throw new Error(`Section target ${targetWords} cannot satisfy ${paragraphCount} substantial paragraphs within the configured section tolerance`);
   }
   return {
     targetWords,
     minimumWords,
     maximumWords,
     paragraphCount,
+    targetWordsPerParagraph,
     minimumWordsPerParagraph,
     maximumWordsPerParagraph,
     paragraphKeys: Array.from({ length: paragraphCount }, (_, index) => `paragraph_${index + 1}`)
@@ -153,7 +162,7 @@ Purpose: ${section.purpose}
 Content: ${section.content_instruction}
 Format guidance: ${format.writing_guidance}
 Target: ${target} content words. Deterministic validation accepts ${contract.minimumWords}-${contract.maximumWords} content words.
-Paragraphs: fill exactly these required fields: ${contract.paragraphKeys.join(', ')}. Each paragraph must contain ${contract.minimumWordsPerParagraph}-${contract.maximumWordsPerParagraph} words. Do not combine fields, omit a field, or submit a shorter paragraph.
+Paragraphs: fill exactly these required fields: ${contract.paragraphKeys.join(', ')}. Each paragraph must contain ${contract.minimumWordsPerParagraph}-${contract.maximumWordsPerParagraph} words; aim for about ${contract.targetWordsPerParagraph} words in every paragraph while keeping the complete section inside its accepted range. Do not combine fields, omit a field, or submit a paragraph outside the broad substantial-paragraph limits.
 Allowed by the format: ${section.allowed_blocks.join(', ')}
 Required special blocks: ${required}
 ${factualGuidance ? `\nFactual source packet and editorial constraints:\n${factualGuidance}\n` : ''}

@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePlan, parseArticleSection, promptForArticlePlan, promptForArticleSection, sectionGenerationContract } from '../src/generation/article-generator.js';
 import { ArticleFormatRegistry } from '../src/generation/article-format-registry.js';
-import { parseDraft, renderAndValidateArticle, saveDraft, type StructuredArticle } from '../src/generation/article-markdown-renderer.js';
+import { parseDraft, renderAndValidateArticle, saveDraft, validateStructuredSection, type StructuredArticle } from '../src/generation/article-markdown-renderer.js';
 
 const words = (count: number, prefix: string) => Array.from({ length: count }, (_, index) => `${prefix}${index + 1}`).join(' ');
 const paragraphBlocks = (count: number, prefix: string, section: any) => {
@@ -39,9 +39,26 @@ test('format prompt and schema use the selected external definition', async () =
   const sectionPrompt = promptForArticleSection(row, format, plan, 1);
   const sectionSchema = articleSectionResponseSchema(format.sections[1], 150) as any;
   assert.match(sectionPrompt, /paragraph_1, paragraph_2/i);
-  assert.match(sectionPrompt, /63-87 words/i);
+  assert.match(sectionPrompt, /35-220 words/i);
+  assert.match(sectionPrompt, /aim for about 75 words/i);
   assert.deepEqual(sectionSchema.properties.paragraphs.required, ['paragraph_1', 'paragraph_2']);
   assert.equal(sectionSchema.properties.blocks, undefined);
+});
+
+test('section validation permits naturally uneven substantial paragraphs', async () => {
+  const registry = await ArticleFormatRegistry.load(path.resolve('config/blog-formats'));
+  const definition = registry.get('long').sections[0];
+  const contract = sectionGenerationContract(150, definition);
+  assert.equal(contract.minimumWordsPerParagraph, 35);
+  assert.equal(contract.maximumWordsPerParagraph, 220);
+  assert.equal(contract.targetWordsPerParagraph, 75);
+  assert.equal(validateStructuredSection(150, definition, {
+    heading: 'A practical comparison',
+    blocks: [
+      { type: 'paragraph', text: words(52, 'first-') },
+      { type: 'paragraph', text: words(98, 'second-') }
+    ]
+  }, 0), 150);
 });
 
 test('renderer guarantees exactly one H1 per format section', async () => {

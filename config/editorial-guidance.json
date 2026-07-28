@@ -5,6 +5,14 @@
     "Use current product terminology and qualify behavior that varies by configuration.",
     "Warn readers before recommending an irreversible filter, deletion, publication, migration, or configuration action."
   ],
+  "universal_checks": [
+    {
+      "id": "unsupported-click-or-step-threshold",
+      "pattern": "\\b(?:more than|fewer than)\\s+(?:one|two|three|four|five|\\d+)\\s+(?:clicks?|steps?)\\b",
+      "problem": "The article presents an unsourced click-count or step-count threshold as a decision rule.",
+      "required_change": "Remove the arbitrary numeric threshold and describe the comparison qualitatively, or clearly label a sourced or reader-chosen measurement."
+    }
+  ],
   "rules": [
     {
       "id": "google-analytics-4",
@@ -24,6 +32,129 @@
           "id": "google-ga4-internal-traffic",
           "url": "https://support.google.com/analytics/answer/10104470?hl=en",
           "note": "An active GA4 data filter permanently changes incoming data. Excluded data is not processed or available later, so test an internal-traffic filter before activating it."
+        }
+      ],
+      "checks": [
+        {
+          "id": "ga4-outdated-bounce-rate",
+          "pattern": "\\bbounce rate\\b[^.]{0,180}\\b(?:left|leave|exit(?:ed|s|ing)?)\\b[^.]{0,80}\\b(?:one|single) page\\b",
+          "problem": "The article uses the outdated single-page-exit definition of GA4 bounce rate.",
+          "required_change": "Define GA4 bounce rate as the percentage of sessions that were not engaged, using the supplied engagement criteria."
+        },
+        {
+          "id": "ga4-obsolete-conversion-event-term",
+          "pattern": "\\bconversion events?\\b",
+          "problem": "The article uses obsolete GA4 reporting terminology.",
+          "required_change": "Use key event for an important business action in Google Analytics reporting and reserve conversion wording for the documented advertising context."
+        },
+        {
+          "id": "ga4-unsourced-ten-percent-threshold",
+          "pattern": "\\b(?:10|ten)\\s*(?:%|percent)\\b",
+          "problem": "The article presents the previously observed unsourced ten-percent analytics threshold.",
+          "required_change": "Remove the universal threshold or clearly identify it as a reader-chosen example rather than a benchmark."
+        }
+      ]
+    },
+    {
+      "id": "woocommerce-shopify-comparison",
+      "topic_patterns": ["woocommerce vs. shopify", "woocommerce vs shopify"],
+      "sources": [
+        {
+          "id": "shopify-support-by-plan",
+          "url": "https://help.shopify.com/en/manual/your-account/contact-shopify-support",
+          "note": "Shopify chat is available 24/7 on all plans. Phone support is available for Shopify Plus, the Retail plan, and eligible Shopify POS Pro users. Email support is available for Shopify Plus and the Retail plan, but not merely because a merchant uses POS Pro. Do not combine these eligibility rules or claim that every paid plan includes phone or email support."
+        },
+        {
+          "id": "shopify-third-party-transaction-fees",
+          "url": "https://help.shopify.com/en/manual/your-account/manage-billing/billing-charges/types-of-charges/third-party-charges/third-party-transaction-fees",
+          "note": "Shopify third-party transaction fees depend on the plan, payment provider, payment method, order, and store circumstances. Do not say these fees simply disappear when Shopify Payments is active: payment processing fees still apply, third-party-provider transactions can still incur fees, and documented store-credit and gift-card exceptions exist."
+        },
+        {
+          "id": "woocommerce-payment-gateway-costs",
+          "url": "https://woocommerce.com/document/premium-payment-gateway-extensions/",
+          "note": "WooCommerce payment gateways connect the store to payment processors. Processors have their own terms and transaction fees, and some premium gateway extensions also require an annual subscription for support and updates."
+        },
+        {
+          "id": "shopify-scripts-sunset",
+          "url": "https://shopify.dev/docs/apps/build/functions/migrating-from-shopify-scripts",
+          "note": "Shopify Scripts was sunset on June 30, 2026; published Scripts were deactivated and no longer function. Recommend Shopify Functions or compatible public apps instead. Public apps containing Functions are available on all plans, while custom apps containing Function APIs require Shopify Plus and some Function capabilities remain Plus-only."
+        },
+        {
+          "id": "shopify-plan-user-limits",
+          "url": "https://help.shopify.com/en/manual/your-account/users/users-plan-requirements",
+          "note": "Starter, Basic, Grow, Advanced, and Shopify Plus are current official plan names; Grow replaced the older plan name Shopify. Do not claim Starter or Grow is nonexistent. Shopify plan limits apply to admin user accounts: Basic and Starter allow zero additional admin users, Grow allows five, Advanced allows fifteen, and Plus allows unlimited users. Collaborator and POS-only staff accounts are exempt. Do not invent a generic product-listing or SKU limit or confuse product listings with admin-user limits."
+        },
+        {
+          "id": "shopify-uptime-history",
+          "url": "https://help.shopify.com/en/manual/intro-to-shopify/overview",
+          "note": "Shopify reports 99.9% platform uptime over the past 90 days, with exclusions for third-party outages, theme or app errors, planned maintenance, and major external events. Describe this as recent measured uptime, not a universal uptime guarantee or SLA."
+        },
+        {
+          "id": "shopify-store-backups",
+          "url": "https://help.shopify.com/en/manual/shopify-admin/duplicate-store",
+          "note": "Merchants can export supported store data as CSV files, download theme copies, and use an App Store app to create store backups. Do not claim that a Shopify plan automatically provides a complete restorable store backup."
+        }
+      ],
+      "checks": [
+        {
+          "id": "shopify-payments-even-when-fee-claim",
+          "pattern": "\\b(?:transaction|third-party) fees?\\b[^.]{0,180}\\beven when Shopify Payments (?:is active|is used|is enabled)|\\bShopify\\b[^.]{0,180}\\beven when using Shopify Payments\\b",
+          "problem": "The article overstates Shopify transaction fees by saying they apply even when Shopify Payments is used.",
+          "required_change": "Explain that payment processing fees still apply, while third-party transaction fees depend on provider, payment method, order, plan, and documented exceptions."
+        },
+        {
+          "id": "shopify-fees-disappear-claim",
+          "pattern": "\\b(?:transaction )?fees? (?:simply )?(?:disappear|vanish)\\b",
+          "problem": "The article says Shopify transaction fees disappear without preserving documented exceptions.",
+          "required_change": "Qualify the fee behavior using the supplied Shopify transaction-fee source note."
+        },
+        {
+          "id": "shopify-payments-removes-all-third-party-fees",
+          "pattern": "\\bShopify Payments\\b[^.]{0,100}\\b(?:removes?|eliminates?)\\b[^.]{0,80}\\bthird-party (?:transaction )?(?:fees|charges)\\b",
+          "problem": "The article says Shopify Payments removes all third-party fees without preserving documented provider, payment-method, order, and store-credit exceptions.",
+          "required_change": "State that Shopify Payments transactions generally avoid Shopify third-party transaction fees while processing fees and documented exceptions still apply."
+        },
+        {
+          "id": "shopify-phone-support-omits-pos-pro",
+          "pattern": "\\bonly Plus and (?:certain )?Retail plans provide phone support\\b",
+          "problem": "The article omits eligible Shopify POS Pro users from phone-support availability.",
+          "required_change": "State the separate support rules exactly: chat on all plans; phone for Plus, Retail, and eligible POS Pro; email for Plus and Retail."
+        },
+        {
+          "id": "shopify-scripts-without-sunset",
+          "pattern": "\\bShopify Scripts\\b(?![^.]{0,180}\\b(?:sunset|deactivated|no longer (?:work|function)|ceased to (?:work|function))\\b)",
+          "problem": "The article mentions Shopify Scripts without explaining that they were sunset and no longer function.",
+          "required_change": "Remove the obsolete recommendation or state that Shopify Scripts were sunset on June 30, 2026 and direct readers to Shopify Functions or compatible public apps."
+        },
+        {
+          "id": "shopify-uptime-guarantee",
+          "pattern": "\\bShopify\\b[^.]{0,160}\\bguarantees? uptime\\b",
+          "problem": "The article turns Shopify's recent measured uptime into an unsupported guarantee.",
+          "required_change": "Describe the documented 99.9% uptime as a measurement over the past 90 days with exclusions, or omit the uptime claim."
+        },
+        {
+          "id": "shopify-automatic-backup-claim",
+          "pattern": "\\bShopify\\b[^.]{0,180}\\bautomatic backups?\\b",
+          "problem": "The article implies that Shopify automatically provides a complete restorable store backup.",
+          "required_change": "Explain that merchants back up supported data with CSV exports, theme downloads, or a backup app, or omit the backup claim."
+        },
+        {
+          "id": "shopify-invented-product-listing-limit",
+          "pattern": "\\bShopify\\b[^.]{0,200}\\b(?:limits? on product listings|product-listing limits?|SKU limits?|SKU ceiling)\\b",
+          "problem": "The article invents or implies a generic Shopify product-listing or SKU limit.",
+          "required_change": "Remove the generic product or SKU limit and discuss only the sourced admin-user limits or another specifically sourced plan limitation."
+        },
+        {
+          "id": "unsourced-ecommerce-dollar-amount",
+          "pattern": "\\$\\s?\\d",
+          "problem": "The comparison includes a specific dollar amount that is not present in the authoritative source packet.",
+          "required_change": "Remove the amount and describe pricing as variable, or add an authoritative current source note before using a specific price."
+        },
+        {
+          "id": "shopify-guaranteed-support-claim",
+          "pattern": "(?:\\bShopify\\b[^.]{0,200}\\bguaranteed (?:assistance|support|response)\\b|\\bguaranteed (?:assistance|support|response)\\b[^.]{0,200}\\bShopify\\b)",
+          "problem": "The article turns support-channel availability into an unsupported guarantee about assistance or response.",
+          "required_change": "Describe the available support channels without guaranteeing response speed or resolution."
         }
       ]
     }

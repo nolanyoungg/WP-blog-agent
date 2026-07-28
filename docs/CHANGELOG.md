@@ -5,10 +5,11 @@
 ### Added
 
 - Tracker-scoped, atomic generation checkpoints under `data/checkpoints/`, allowing a stopped or failed article to resume its validated plan and completed sections.
-- `config/editorial-guidance.json` with universal factual-safety constraints and authoritative Google Analytics source notes for current GA4 bounce-rate, key-event, and internal-traffic behavior.
-- A real LM Studio structured quality-review stage that flags material factual/safety issues, repairs affected sections once, and re-reviews the completed article before any draft is saved.
+- `config/editorial-guidance.json` with universal factual-safety constraints, authoritative Google Analytics source notes, and official Shopify/WooCommerce guidance for support channels, transaction fees, plan limits, uptime history, backups, and the Shopify Scripts sunset.
+- Source-configured deterministic claim checks for known GA4, Shopify, and WooCommerce errors that must be blocked even when the model reviewer misses them.
+- A real LM Studio structured quality-review stage that flags material factual/safety issues, repairs affected sections for up to three bounded rounds, and re-reviews the complete article after every round before any draft is saved.
 - Per-attempt section word metrics, paragraph counts, best-attempt metadata, selected editorial rule/source IDs, checkpoint events, and quality-review results in JSONL run logs.
-- Deterministic coverage for canonical paragraph contracts, fixed section schemas, generation-error retry selection, checkpoint identity/removal, GA4 source matching, quality-review parsing, and new environment paths.
+- Deterministic coverage for canonical paragraph contracts, naturally uneven substantial paragraphs, fixed section schemas, generation-error retry selection, primary-only model selection, checkpoint identity/removal, topic source matching, deterministic claim checks, quality-review parsing, and new environment paths.
 - Formatted PDF review artifacts alongside authoritative Markdown drafts, including readable headings, paragraphs, lists, tables, code blocks, link destinations, document metadata, and page-numbered footers.
 - A configurable macOS Messages attachment outbox under Pictures plus database-backed attachment send confirmation and bounded polling settings.
 - Extensible blog format definitions under `config/blog-formats/`, with authoritative `format.json` rules and readable `example.md` files for the real `short`, `medium`, and `long` formats.
@@ -29,8 +30,9 @@
 
 ### Changed
 
-- Section generation now uses fixed required paragraph fields backed by one canonical ±15% word contract shared by prompts and deterministic validation. This avoids the previously problematic block-array maximum while making paragraph count structural.
+- Section generation now uses fixed required paragraph fields backed by one canonical section-level ±15% word contract shared by prompts and deterministic validation. Exact paragraph count remains structural, while each paragraph uses the format’s broad substantial-paragraph limits instead of an artificial equal split of the section range.
 - Validation retries now preserve the closest structured candidate across models and ask LM Studio to repair that JSON as untrusted article data instead of independently resampling every attempt.
+- The configured primary LM Studio model is now the only default candidate. Other installed LLMs are neither selected nor loaded unless `LMSTUDIO_ALLOW_FALLBACK_MODELS=true` is explicitly set.
 - Generation-error rows without a saved draft now have claim priority so failed work is retried before new pending work; posting errors with a `markdown_path` are never regenerated.
 - Format-level `writing_guidance` now reaches both the plan and every section prompt, and `npm run formats:validate` also loads and validates editorial guidance.
 - Section validation messages now state the accepted range, received count, and minimum number of words to add or remove. Final failures and iMessage notifications identify the best attempt instead of only the last attempt.
@@ -53,6 +55,7 @@
 ### Fixed
 
 - Prevent systematic one-paragraph under-generation by requiring every calculated paragraph field in the LM Studio schema and enforcing the identical paragraph count and word range after parsing.
+- Prevent valid two-paragraph sections from failing because one paragraph is only a few words outside an artificially equal allocation; the section total remains strictly validated.
 - Eliminate prompt/schema/validator disagreement: section targets, accepted ranges, paragraph counts, and per-paragraph limits are now calculated once.
 - Preserve completed generation work across process exits and section failures instead of abandoning the entire article.
 - Prevent outdated GA4 definitions, obsolete conversion-event terminology, unsupported universal thresholds, and unqualified irreversible-filter advice from passing without a source-grounded review opportunity.
@@ -82,7 +85,9 @@
 
 ### Tested
 
-- `npm run lint`, all 23 deterministic tests, `npm run formats:validate`, direct JSON parsing for every format plus editorial guidance, and `git diff --check` pass with the new reliability and quality pipeline.
+- `npm run lint`, all 31 deterministic tests, `npm run formats:validate`, editorial-guidance validation, and `git diff --check` pass with the completed reliability and quality pipeline.
+- A real isolated `npm run once` resume used only the already-loaded `openai/gpt-oss-20b`, repaired unsupported Shopify support and fee claims without paragraph-allocation retries, passed two complete source-grounded reviews, produced 10 sections with exactly two paragraphs each and 1,400 content words, rendered a visually inspected four-page PDF, removed its checkpoint, and moved the copied tracker row to `awaiting_review` with no formula errors, iMessage delivery, or WordPress activity.
+- LM Studio status was checked before and after the real run; `openai/gpt-oss-20b` was the only loaded model and fallback loading remained disabled.
 - Merged the PDF iMessage attachment work into `main`; `npm run lint` completed successfully and all 20 deterministic tests passed.
 - Before the single-sheet migration, the final tracker snapshot was stable after the worker stopped, re-imported successfully, retained all three sheets and the `BlogFormatIds` name, and contained no formula-error values.
 - A real LM Studio run for Blog #21 completed all ten sections, created 10,195-byte Markdown and 11,670-byte PDF artifacts, delivered the PDF through Messages, and finished at `awaiting_review`; the run log and tracker agree on the completion timestamp and selected models.

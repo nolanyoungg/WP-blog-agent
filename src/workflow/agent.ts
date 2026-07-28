@@ -7,7 +7,7 @@ import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePl
 import { ArticleFormatRegistry } from '../generation/article-format-registry.js';
 import { parseDraft, renderAndValidateArticle, saveDraft, structuredSectionWordCount, validateStructuredSection, type StructuredSection } from '../generation/article-markdown-renderer.js';
 import { articleQualityReviewSchema, parseArticleQualityReview, promptForArticleQualityReview, type ArticleQualityIssue } from '../generation/article-quality-reviewer.js';
-import { EditorialGuidanceRegistry } from '../generation/editorial-guidance.js';
+import { EditorialGuidanceRegistry, findEditorialIssues } from '../generation/editorial-guidance.js';
 import { loadGenerationCheckpoint, removeGenerationCheckpoint, saveGenerationCheckpoint } from '../generation/generation-checkpoint.js';
 import { LMStudioClient } from '../lmstudio/client.js';
 import { parseReview } from '../messaging/imessage.js';
@@ -122,7 +122,7 @@ export class BlogWorkflow {
       await this.log.write('workflow.generation_started', { blog_id: row.blog_id });
       const format = formats.get(row.blog_type);
       const guidance = (await this.editorialGuidance).forTopic(row.blog_topic);
-      await this.log.write('workflow.editorial_guidance_selected', { blog_id: row.blog_id, rule_ids: guidance.ruleIds, source_ids: guidance.sourceIds });
+      await this.log.write('workflow.editorial_guidance_selected', { blog_id: row.blog_id, rule_ids: guidance.ruleIds, source_ids: guidance.sourceIds, check_ids: guidance.checkIds });
       let checkpoint;
       try { checkpoint = await loadGenerationCheckpoint(this.checkpointDirectory, row); }
       catch (error) {
@@ -196,11 +196,13 @@ export class BlogWorkflow {
           text => parseArticleQualityReview(text, sections.length)
         );
         models.add(generatedReview.model);
-        return generatedReview.value;
+        const issues = [...findEditorialIssues(guidance.checks, sections), ...generatedReview.value.issues];
+        const unique = [...new Map(issues.map(issue => [`${issue.section_index}:${issue.problem}:${issue.quoted_claim}`, issue])).values()];
+        return { verdict: unique.length ? 'revise' as const : 'pass' as const, issues: unique };
       };
       let qualityReview = await reviewArticle();
-      await this.log.write('workflow.quality_review_completed', { blog_id: row.blog_id, verdict: qualityReview.verdict, issue_count: qualityReview.issues.length });
-      if (qualityReview.verdict === 'revise') {
+      await this.log.write('workflow.quality_review_completed', { blog_id: row.blog_id, verdict: qualityReview.verdict, issue_count: qualityReview.issues.length, issues: qualityReview.issues });
+      for (let repairRound = 1; qualityReview.verdict === 'revise' && repairRound <= 3; repairRound++) {
         const issuesBySection = new Map<number, ArticleQualityIssue[]>();
         for (const issue of qualityReview.issues) issuesBySection.set(issue.section_index, [...(issuesBySection.get(issue.section_index) ?? []), issue]);
         for (const [sectionNumber, issues] of issuesBySection) {
@@ -208,7 +210,7 @@ export class BlogWorkflow {
           const definition = format.sections[index];
           const target = Math.round(row.blog_length! * definition.word_percentage / 100);
           const correction = issues.map(issue => `- Problem: ${issue.problem}\n  Required change: ${issue.required_change}\n  Claim to remove or correct: ${issue.quoted_claim}`).join('\n');
-          await this.log.write('workflow.quality_repair_started', { blog_id: row.blog_id, section_index: sectionNumber, issue_count: issues.length });
+          await this.log.write('workflow.quality_repair_started', { blog_id: row.blog_id, repair_round: repairRound, section_index: sectionNumber, issue_count: issues.length });
           const repaired = await this.lm.generateStructured(
             `${promptForArticleSection(row, format, planValue, index, guidance.prompt)}
 
@@ -233,14 +235,14 @@ Replace the prior section completely. Do not preserve a claim that the review id
           sections[index] = repaired.value;
           models.add(repaired.model);
           await saveGenerationCheckpoint(this.checkpointDirectory, row, planValue, sections, models);
-          await this.log.write('workflow.quality_repair_succeeded', { blog_id: row.blog_id, section_index: sectionNumber, model: repaired.model });
+          await this.log.write('workflow.quality_repair_succeeded', { blog_id: row.blog_id, repair_round: repairRound, section_index: sectionNumber, model: repaired.model });
         }
         qualityReview = await reviewArticle();
-        await this.log.write('workflow.quality_review_completed', { blog_id: row.blog_id, verdict: qualityReview.verdict, issue_count: qualityReview.issues.length, after_repair: true });
-        if (qualityReview.verdict !== 'pass') {
-          const summary = qualityReview.issues.map(issue => `section ${issue.section_index}: ${issue.problem}`).join('; ');
-          throw new Error(`Article quality review still requires revision after one repair pass: ${summary}`);
-        }
+        await this.log.write('workflow.quality_review_completed', { blog_id: row.blog_id, verdict: qualityReview.verdict, issue_count: qualityReview.issues.length, issues: qualityReview.issues, after_repair: true, repair_round: repairRound });
+      }
+      if (qualityReview.verdict !== 'pass') {
+        const summary = qualityReview.issues.map(issue => `section ${issue.section_index}: ${issue.problem}`).join('; ');
+        throw new Error(`Article quality review still requires revision after three repair rounds: ${summary}`);
       }
       const model = [...models].join(', ');
       const article = { ...planValue, sections };

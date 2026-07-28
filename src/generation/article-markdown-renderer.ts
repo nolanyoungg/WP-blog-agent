@@ -106,7 +106,7 @@ export const validateStructuredSection = (sectionTarget: number, definition: Art
   paragraphBlocks.forEach((paragraph, paragraphIndex) => {
     const count = wordCount(paragraph.text ?? '');
     if (count < contract.minimumWordsPerParagraph || count > contract.maximumWordsPerParagraph) {
-      throw new Error(`Section ${index + 1} paragraph ${paragraphIndex + 1} requires ${contract.minimumWordsPerParagraph}-${contract.maximumWordsPerParagraph} words; received ${count}`);
+      throw new Error(`Section ${index + 1} paragraph ${paragraphIndex + 1} requires ${contract.minimumWordsPerParagraph}-${contract.maximumWordsPerParagraph} words; received ${count}. Aim for about ${contract.targetWordsPerParagraph} words while keeping the complete section at ${contract.minimumWords}-${contract.maximumWords} words`);
     }
   });
   for (const required of definition.required_blocks) {
