@@ -131,6 +131,9 @@ Set these values. Leave LM Studio and WordPress settings blank or at their harml
 ~~~
 IMESSAGE_RECIPIENT=+15186811835
 IMESSAGE_CHAT_DB=$HOME/Library/Messages/chat.db
+IMESSAGE_ATTACHMENT_OUTBOX=$HOME/Pictures/WP Blog Agent Outbox
+IMESSAGE_DELIVERY_TIMEOUT_MS=60000
+IMESSAGE_DELIVERY_POLL_MS=250
 IMESSAGE_RELAY_TOKEN=RELAY_TOKEN
 IMESSAGE_RELAY_LISTEN_HOST=HOME_MAC_TAILSCALE_IP
 IMESSAGE_RELAY_LISTEN_PORT=8787
@@ -213,7 +216,7 @@ IMESSAGE_ADAPTER=relay
 IMESSAGE_RECIPIENT=+15186811835
 IMESSAGE_RELAY_URL=http://HOME_MAC_TAILSCALE_IP:8787
 IMESSAGE_RELAY_TOKEN=RELAY_TOKEN
-IMESSAGE_RELAY_TIMEOUT_MS=30000
+IMESSAGE_RELAY_TIMEOUT_MS=90000
 
 # Home Windows owns the operational artifacts and WordPress draft posting
 TRACKER_PATH=manual-files/wordpress-blog-content-tracker.xlsx
@@ -261,7 +264,7 @@ Do not run the workflow until both requests succeed.
 
 ## 7. First safe real-model dry-run
 
-This calls the real Work Mac model and creates a real local Markdown draft. It does not send iMessage or touch WordPress, and it uses a copied tracker.
+This calls the real Work Mac model and creates real local Markdown and PDF review artifacts. It does not send iMessage or touch WordPress, and it uses a copied tracker.
 
 ~~~
 $copy = Join-Path $env:TEMP "wp-blog-agent-first-run.xlsx"
@@ -301,8 +304,8 @@ The expected sequence is:
 
 1. Windows claims one pending tracker row.
 2. Work Mac generates the article with LM Studio.
-3. Windows saves the Markdown under data/drafts.
-4. Home Intel Mac sends the Markdown and approval instructions through Messages.
+3. Windows saves the authoritative Markdown and renders a formatted PDF review copy under data/drafts.
+4. Home Intel Mac stages the PDF under Pictures, sends it through Messages, verifies the outgoing attachment row in chat.db, cleans up the staged copy, and then sends the approval instructions.
 5. The tracker changes to awaiting_review.
 
 Reply from the configured recipient with exactly one of the following, using the actual blog_id:
@@ -352,6 +355,7 @@ Keep the Home Mac signed into Messages. The ignored .env in the repository suppl
 | Windows cannot reach Work Mac model API | Tailscale is connected; Work Mac local curl works; LM Studio server is running | Verify the Work Mac address, enable Serve on Local Network, enable LM Studio authentication, and accept the firewall prompt. |
 | Windows cannot reach Home Mac relay | npm run relay is still running; token matches; Tailscale is connected | Check the relay terminal, then the Home Mac address and port 8787. Never make this a public service. |
 | Relay does not send iMessage | Home Mac is signed into Messages and terminal permissions are granted | Restart the relay and run one official request to trigger and approve the macOS Automation prompt. |
+| Ready text arrives without a PDF | Home Mac has Full Disk Access; `IMESSAGE_ATTACHMENT_OUTBOX` is under Pictures; relay and workflow use current code | Inspect the relay error and `chat.db`. The adapter must fail rather than send the ready text when the PDF row has a Messages error or does not become sent before the timeout. |
 | Reply is ignored | Reply is exact and from the configured recipient | Verify automatic date and time on Home Windows and Home Mac, then run npm run once again on Windows. |
 | WordPress posting fails | Windows .env has valid HTTPS URL, user, and Application Password | Keep WORDPRESS_POST_STATUS=draft while correcting the credentials. |
 

@@ -6,6 +6,7 @@ import { ArticleFormatRegistry } from '../generation/article-format-registry.js'
 import { parseDraft, renderAndValidateArticle, saveDraft, validateStructuredSection } from '../generation/article-markdown-renderer.js';
 import { LMStudioClient } from '../lmstudio/client.js';
 import { parseReview } from '../messaging/imessage.js';
+import { createReviewPdf } from '../review/pdf.js';
 import { RunLog } from '../log.js';
 import { ExcelTracker } from '../tracker/excel-tracker.js';
 import { WordPressClient } from '../wordpress/client.js';
@@ -106,6 +107,7 @@ export class BlogWorkflow {
     const formats = await this.formats;
     const row = await this.tracker.claimNext(new Set(formats.ids()));
     if (!row) { await this.log.write('workflow.no_pending_rows'); return; }
+    let draftGenerated = false;
     try {
       await this.log.write('workflow.generation_started', { blog_id: row.blog_id });
       const format = formats.get(row.blog_type);
@@ -133,13 +135,18 @@ export class BlogWorkflow {
       const article = { ...plan.value, sections };
       const markdown = renderAndValidateArticle(row, format, article);
       const draft = await saveDraft(this.settings.draftsDir, row, markdown, model);
+      draftGenerated = true;
+      const reviewPdf = await createReviewPdf(draft);
+      await this.log.write('workflow.review_pdf_created', { blog_id: row.blog_id, draft, review_pdf: reviewPdf });
       const requestedAt = new Date().toISOString();
       await this.tracker.update(row.blog_id, { blog_status: 'awaiting_review', review_status: 'pending', review_token: `YES ${row.blog_id} / NO ${row.blog_id}`, markdown_path: draft, model_used: model, blog_created_date: requestedAt });
-      await this.notify(`Blog draft #${row.blog_id} is ready: “${row.blog_topic}”\n\nReply exactly:\nYES ${row.blog_id} — post it to WordPress\nNO ${row.blog_id} — reject and stop`, draft);
-      await this.log.write('workflow.awaiting_review', { blog_id: row.blog_id, draft, model, review_requested_at: requestedAt });
+      await this.notify(`Blog draft #${row.blog_id} is ready: “${row.blog_topic}”\n\nReply exactly:\nYES ${row.blog_id} — post it to WordPress\nNO ${row.blog_id} — reject and stop`, reviewPdf);
+      await this.log.write('workflow.awaiting_review', { blog_id: row.blog_id, draft, review_pdf: reviewPdf, model, review_requested_at: requestedAt });
     } catch (error) {
       await this.tracker.update(row.blog_id, { blog_status: 'error' });
-      await this.notify(`Blog #${row.blog_id} could not be generated: ${String(error)}`);
+      await this.notify(draftGenerated
+        ? `Blog draft #${row.blog_id} was generated, but its PDF review attachment could not be prepared or delivered: ${String(error)}`
+        : `Blog #${row.blog_id} could not be generated: ${String(error)}`);
       throw error;
     }
   }

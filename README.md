@@ -51,13 +51,13 @@ npm test
 
 `once` handles valid outstanding replies then claims/generates at most one row. `worker` repeats at `POLL_INTERVAL_MS`. Dry-run still uses the real configured LM Studio instance and updates only the supplied tracker/draft, but never sends an iMessage or posts to WordPress. Always use a copy when dry-running.
 
-Markdown source is saved under `data/drafts/`; JSONL logs are under `data/runs/`. LM Studio returns a structured article plan and structured section blocks; application code validates and assembles them, renders deterministic Markdown and YAML front matter, and names new drafts as `blog-<padded-id>-<slug>.md`. Existing draft paths remain valid. Article content is converted to WordPress HTML only at posting time. WordPress post lookup by slug prevents duplicate posting after restart; post ID/URL/date are stored only after WordPress confirms the response.
+Markdown source and formatted PDF review copies are saved under `data/drafts/`; JSONL logs are under `data/runs/`. LM Studio returns a structured article plan and structured section blocks; application code validates and assembles them, renders deterministic Markdown and YAML front matter, and names new drafts as `blog-<padded-id>-<slug>.md`. A same-basename `.pdf` preserves the title, headings, paragraphs, lists, tables, code blocks, links, and page numbers for editorial review. The Markdown remains the authoritative source and is converted to WordPress HTML only at posting time. WordPress post lookup by slug prevents duplicate posting after restart; post ID/URL/date are stored only after WordPress confirms the response.
 
 ## Review adapters and macOS permissions
 
-The attached draft asks the recipient to reply exactly `YES <blog_id>` or `NO <blog_id>` (case-insensitive). On direct macOS Messages runs, the Markdown draft is sent as a same-content `.txt` attachment for reliable iMessage delivery. Messages from other senders and malformed, stale, or ambiguous text are ignored. `NO` records rejection and sends a confirmation; `YES` posts the matching approved draft, then sends `Draft posted!` with its WordPress link. Posting errors are also sent by iMessage.
+The PDF review draft asks the recipient to reply exactly `YES <blog_id>` or `NO <blog_id>` (case-insensitive). On the Mac that controls Messages, the PDF is copied temporarily to `IMESSAGE_ATTACHMENT_OUTBOX` (default: `~/Pictures/WP Blog Agent Outbox`) because current Messages releases can silently fail to transfer files from development or temporary directories. The adapter sends the PDF first, waits for the matching `chat.db` row to report sent or delivered with no error, cleans up the temporary outbox copy, and only then sends `Blog draft #<blog_id> is ready...`. An AppleScript return alone is not treated as delivery. Messages from other senders and malformed, stale, or ambiguous text are ignored. `NO` records rejection and sends a confirmation; `YES` posts the matching approved Markdown draft, then sends `Draft posted!` with its WordPress link.
 
-Set `IMESSAGE_ADAPTER=macos` to use Messages directly on the machine running the workflow. Sign into Messages first. macOS will request permission for the terminal/launch agent to automate Messages; allow it. Reading replies queries `~/Library/Messages/chat.db`, so grant the executing terminal or launch service **Full Disk Access** in System Settings → Privacy & Security. `IMESSAGE_CHAT_DB` accepts either `$HOME/Library/Messages/chat.db` or `~/Library/Messages/chat.db`. Use `IMESSAGE_ADAPTER=dry-run` before allowing real sends.
+Set `IMESSAGE_ADAPTER=macos` to use Messages directly on the machine running the workflow. Sign into Messages first. macOS will request permission for the terminal/launch agent to automate Messages; allow it. Reading replies and confirming attachment sends query `~/Library/Messages/chat.db`, so grant the executing terminal or launch service **Full Disk Access** in System Settings → Privacy & Security. `IMESSAGE_CHAT_DB` and `IMESSAGE_ATTACHMENT_OUTBOX` accept either `$HOME/...` or `~/...`. `IMESSAGE_DELIVERY_TIMEOUT_MS` defaults to 60 seconds and `IMESSAGE_DELIVERY_POLL_MS` to 250 milliseconds. Use `IMESSAGE_ADAPTER=dry-run` before allowing real sends.
 
 Set `IMESSAGE_ADAPTER=relay` on a non-macOS workflow machine to send and receive through a separate Mac that is signed into Messages. The relay is an add-on transport only: generation still uses LM Studio, and the Windows workflow still owns the tracker and WordPress posting state.
 
@@ -137,7 +137,7 @@ Open `manual-files/wordpress-blog-content-tracker.xlsx` in Excel or Numbers. In 
 
 ### 6. Run a safe real-LM-Studio dry-run on a copy
 
-This calls real LM Studio and creates a real Markdown draft, but never sends iMessage or posts to WordPress:
+This calls real LM Studio and creates real Markdown and PDF review artifacts, but never sends iMessage or posts to WordPress:
 
 ```sh
 cp manual-files/wordpress-blog-content-tracker.xlsx /tmp/wp-blog-agent-first-run.xlsx
@@ -159,7 +159,7 @@ Confirm successful generation in the terminal and inspect `data/drafts/`. The re
 npm run once
 ```
 
-The agent claims the first pending row (blog #2 in the versioned tracker), generates through LM Studio, saves a `.md` draft in `data/drafts/`, sends it to `IMESSAGE_RECIPIENT`, and changes the row to `awaiting_review`.
+The agent claims the first pending row (blog #2 in the versioned tracker), generates through LM Studio, saves authoritative `.md` and review `.pdf` files in `data/drafts/`, confirms the PDF attachment was sent to `IMESSAGE_RECIPIENT`, sends the approval instructions, and changes the row to `awaiting_review`.
 
 ### 9. Approve or reject from iMessage
 
@@ -220,6 +220,9 @@ Set `IMESSAGE_RECIPIENT` to the phone number that will approve drafts. Paste the
 ```dotenv
 IMESSAGE_RECIPIENT=+15186811835
 IMESSAGE_CHAT_DB=$HOME/Library/Messages/chat.db
+IMESSAGE_ATTACHMENT_OUTBOX=$HOME/Pictures/WP Blog Agent Outbox
+IMESSAGE_DELIVERY_TIMEOUT_MS=60000
+IMESSAGE_DELIVERY_POLL_MS=250
 IMESSAGE_RELAY_TOKEN=paste-the-same-long-random-token-on-both-machines
 IMESSAGE_RELAY_LISTEN_HOST=YOUR_PRIVATE_MAC_ADDRESS
 IMESSAGE_RELAY_LISTEN_PORT=8787
@@ -278,4 +281,4 @@ Once both checks succeed and the tracker has its pending topic, run:
 npm run once
 ```
 
-The Windows workflow generates through real LM Studio, writes the draft locally, transfers a temporary copy of the Markdown to the Mac relay, and sends the review message from the home Mac. Reply `YES <blog_id>` or `NO <blog_id>` from the configured recipient, then run `npm run once` on Windows again to process it. A `YES` creates a WordPress **draft** unless you intentionally change `WORDPRESS_POST_STATUS`.
+The Windows workflow generates through real LM Studio, preserves the Markdown source, renders a PDF review copy, transfers that PDF to the Mac relay, and waits for the home Mac to confirm that Messages sent it before sending the approval instructions. Reply `YES <blog_id>` or `NO <blog_id>` from the configured recipient, then run `npm run once` on Windows again to process it. A `YES` creates a WordPress **draft** unless you intentionally change `WORDPRESS_POST_STATUS`.

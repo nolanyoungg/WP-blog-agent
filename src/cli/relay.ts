@@ -4,7 +4,7 @@ import { startRelayServer } from '../messaging/relay-server.js';
 
 const settings = config();
 const relay = await startRelayServer({
-  adapter: new MacOSMessagesAdapter(settings.messaging.recipient, settings.messaging.chatDb),
+  adapter: new MacOSMessagesAdapter(settings.messaging.recipient, settings.messaging.chatDb, settings.messaging.attachmentOutbox, settings.messaging.deliveryTimeoutMs, settings.messaging.deliveryPollMs),
   token: settings.messaging.relayToken,
   host: settings.messaging.relayListenHost,
   port: settings.messaging.relayListenPort

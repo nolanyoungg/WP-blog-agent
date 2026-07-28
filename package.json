@@ -19,10 +19,12 @@
     "dotenv": "^16.6.1",
     "fflate": "^0.8.3",
     "marked": "^15.0.12",
+    "pdfkit": "^0.19.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^24.0.10",
+    "@types/pdfkit": "^0.17.6",
     "typescript": "^5.8.3"
   },
   "engines": {
