@@ -2,7 +2,7 @@ import { mkdir, open, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import XLSX from 'xlsx';
 import type { BlogRow, BlogStatus } from '../domain/blog.js';
-import { ensureBlogFormatDataValidation } from './xlsx-data-validation.js';
+import { blogFormatDataValidationIds, ensureBlogFormatDataValidation } from './xlsx-data-validation.js';
 
 const sheetName = 'Blog tracker';
 const required = ['blog_id', 'blog_topic', 'blog_length', 'blog_type', 'blog_status', 'blog_created_date', 'blog_posted_date'];
@@ -35,10 +35,12 @@ export class ExcelTracker {
     return { book, sheet, rows };
   }
 
-  private async atomic(book: XLSX.WorkBook) {
+  private async atomic(book: XLSX.WorkBook, fallbackFormatIds?: ReadonlySet<string>) {
+    const preservedFormatIds = await blogFormatDataValidationIds(this.file);
     const temp = `${this.file}.${process.pid}.tmp.xlsx`;
     XLSX.writeFile(book, temp, { cellStyles: true });
-    if (book.Sheets['Blog Formats']) await ensureBlogFormatDataValidation(temp);
+    const formatIds = preservedFormatIds ?? (fallbackFormatIds ? [...fallbackFormatIds] : undefined);
+    if (formatIds?.length) await ensureBlogFormatDataValidation(temp, formatIds);
     XLSX.readFile(temp);
     await rename(temp, this.file);
   }
@@ -60,7 +62,7 @@ export class ExcelTracker {
       if (!formatId || (validFormatIds && !validFormatIds.has(formatId))) throw new Error(`blog_id ${String(selected.blog_id)} has unknown blog_type "${formatId ?? ''}"${validFormatIds ? `. Available formats: ${[...validFormatIds].join(', ')}` : ''}`);
       const row = index + 2;
       this.setCells(sheet, row, { blog_status: 'generating', review_status: 'pending' });
-      await this.atomic(book);
+      await this.atomic(book, validFormatIds);
       return { ...selected, row, blog_id: String(selected.blog_id), blog_topic: String(selected.blog_topic), blog_length: length, blog_type: formatId, blog_status: 'generating' as BlogStatus };
     });
   }
