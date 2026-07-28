@@ -37,6 +37,7 @@
 
 ### Fixed
 
+- Keep a confirmed WordPress post recorded as `posted` if its optional iMessage confirmation cannot be delivered.
 - Persist the `blog_type` data-validation rule in the actual XLSX package, including after atomic tracker updates, rather than setting an in-memory worksheet property that the writer did not serialize.
 - Size generated `Blog Formats` rows from each definition’s section count so all long-format outline and paragraph-rule lines remain visible after synchronization.
 - Prevent model-supplied Markdown, HTML heading tags, setext markers, and fenced-code comments from creating or being miscounted as article H1 headings.

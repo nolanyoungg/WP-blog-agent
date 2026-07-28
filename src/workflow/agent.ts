@@ -81,11 +81,19 @@ export class BlogWorkflow {
       const post = await new WordPressClient(requireWordPress(this.settings)).post(await parseDraft(row.markdown_path));
       await this.tracker.update(blogId, { blog_status: 'posted', blog_posted_date: new Date().toISOString(), wordpress_post_id: String(post.id), wordpress_url: post.link });
       await this.log.write('wordpress.posted', { blog_id: blogId, wordpress_post_id: post.id, wordpress_url: post.link });
-      await this.notify(`Draft posted! ${post.link}`);
     } catch (error) {
       await this.tracker.update(blogId, { blog_status: 'error' });
-      await this.notify(`Blog #${blogId} could not be posted: ${String(error)}`);
+      try {
+        await this.notify(`Blog #${blogId} could not be posted: ${String(error)}`);
+      } catch (notificationError) {
+        await this.log.write('imessage.notification_failed', { blog_id: blogId, notification: 'posting_failure', error: String(notificationError) });
+      }
       throw error;
+    }
+    try {
+      await this.notify(`Draft posted! ${(await this.tracker.rows()).find(candidate => candidate.blog_id === blogId)?.wordpress_url ?? ''}`);
+    } catch (error) {
+      await this.log.write('imessage.notification_failed', { blog_id: blogId, notification: 'posting_success', error: String(error) });
     }
   }
 
