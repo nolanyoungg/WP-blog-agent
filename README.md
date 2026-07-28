@@ -1,6 +1,6 @@
 # WP Blog Agent
 
-A local-first blog workflow. It selects one `pending` row from `manual-files/wordpress-blog-content-tracker.xlsx`, generates a Markdown draft using **only LM Studio**, requests an iMessage decision, and posts to WordPress only after an exact approval reply. It never downloads a model or sends prompts to cloud AI providers.
+A local-first blog workflow. It selects one `pending` row—or retries a generation-error row that has no saved draft—from `manual-files/wordpress-blog-content-tracker.xlsx`, generates a Markdown draft using **only LM Studio**, requests an iMessage decision, and posts to WordPress only after an exact approval reply. It never downloads a model or sends prompts to cloud AI providers.
 
 ## Requirements and setup
 
@@ -15,7 +15,7 @@ cp .env.example .env
 
 Set the iMessage recipient, tracker location, WordPress URL/user/application password, and keep `WORDPRESS_POST_STATUS=draft` unless intentional publication is required. HTTPS is enforced unless `WORDPRESS_ALLOW_HTTP=true` is explicitly set for local development. Do not commit `.env`, drafts, logs, or ad hoc workbook copies.
 
-The workbook contains only a `Blog tracker` sheet with exactly these columns: `blog_id`, `blog_topic`, `blog_length`, `blog_type`, `blog_status`, `blog_created_date`, `blog_posted_date`, `markdown_path`, `review_status`, `review_token`, `model_used`, `wordpress_post_id`, and `wordpress_url`. `blog_length` is the independent target content-word count. `blog_type` is a format ID discovered from `config/blog-formats/`, not a TypeScript enum. The bundled definitions are `short` (exactly 4 H1 headings), `medium` (6), and `long` (10). Before review, the agent enforces the selected format’s section allocation, paragraph limits, allowed and required blocks, metadata, exact H1 count, and overall word tolerance, retrying with the precise validation failure when needed. The agent atomically writes a validated temporary workbook, preserves the inline `blog_type` dropdown, and uses an exclusive sidecar lock to prevent two workers claiming the same pending row.
+The workbook contains only a `Blog tracker` sheet with exactly these columns: `blog_id`, `blog_topic`, `blog_length`, `blog_type`, `blog_status`, `blog_created_date`, `blog_posted_date`, `markdown_path`, `review_status`, `review_token`, `model_used`, `wordpress_post_id`, and `wordpress_url`. `blog_length` is the independent target content-word count. `blog_type` is a format ID discovered from `config/blog-formats/`, not a TypeScript enum. The bundled definitions are `short` (exactly 4 H1 headings), `medium` (6), and `long` (10). Before review, the agent enforces the selected format’s section allocation, exact generated paragraph count, paragraph lengths, required special blocks, metadata, exact H1 count, section word range, and overall word tolerance. The agent atomically writes a validated temporary workbook, preserves the inline `blog_type` dropdown, and uses an exclusive sidecar lock to prevent two workers claiming the same row. A posting error is never mistaken for a generation retry because any error row with a `markdown_path` is excluded from generation claims.
 
 ## Blog format definitions
 
@@ -28,13 +28,21 @@ npm run formats:validate
 npm run formats:sync
 ```
 
-Validation is read-only and rejects duplicate IDs, missing files, invalid examples, malformed paragraph/block rules, and word percentages that do not total 100. Sync writes the discovered IDs directly into the `blog_type` dropdown without creating a reference worksheet or named range. No TypeScript edit or committed test format is needed.
+Validation is read-only and rejects duplicate IDs, missing files, invalid examples, malformed paragraph/block rules, word percentages that do not total 100, and malformed editorial source guidance. Sync writes the discovered IDs directly into the `blog_type` dropdown without creating a reference worksheet or named range. No TypeScript edit or committed test format is needed.
+
+`config/editorial-guidance.json` contains universal factual-safety constraints plus topic-matched, authoritative source notes. The bundled GA4 packet uses Google Analytics documentation for engagement/bounce rate, key events, and irreversible internal-traffic filters. Add or refresh a rule there when an article family depends on product terminology or behavior that can change; `npm run formats:validate` validates the file before generation.
 
 ## LM Studio behavior
 
 The agent uses native `GET /api/v1/models` and `POST /api/v1/models/load` to find/load already-installed models, and OpenAI-compatible `GET /v1/models` to health-check. Generation gives `openai/gpt-oss-20b` forced function schemas through LM Studio’s [Responses API](https://lmstudio.ai/docs/developer/openai-compat/responses), the API LM Studio documents with GPT-OSS and its Harmony format. Other eligible LM Studio LLMs use the documented [`json_schema` Chat Completions structured output](https://lmstudio.ai/docs/developer/openai-compat/structured-output).
 
-Generation is staged for reliable long articles. First, an exact format-derived schema produces metadata and one heading for every required section key. The agent then makes one structured call per section using that section’s word allocation, paragraph limits, and required block types. Each section must pass deterministic validation before the next begins; adjacent undersized paragraph fragments may be merged, but the final paragraphs must still satisfy the definition. Only after every section passes does application code assemble the article, enforce the overall word tolerance and exact H1 count, render Markdown, and save a draft. The agent tries `openai/gpt-oss-20b` first and makes up to three validation-guided retries per structured stage. Only another LLM advertised by that same LM Studio server is eligible as a fallback; embeddings, downloads, Ollama, hosted OpenAI, Anthropic, and other providers are excluded. Actual selected model, section progress, retry failures, and completion are written to the run log and tracker. `LMSTUDIO_TIMEOUT_MS` defaults to five minutes, while `LMSTUDIO_MAX_TOKENS` defaults to 6,000 to bound a runaway response and produce an explicit completion error.
+Generation is staged for reliable long articles. First, an exact format-derived schema produces metadata and one heading for every required section key. Each section then uses a single canonical contract shared by the prompt, fixed named paragraph schema, and deterministic validator. Fixed fields such as `paragraph_1` and `paragraph_2` enforce the requested paragraph count without the expensive block-array maximum that previously delayed LM Studio grammar compilation. Section limits use ±15% with a 25-word minimum tolerance, and the assembled article still must satisfy its overall tolerance and exact H1 count.
+
+After each valid plan or section, an atomic checkpoint is saved beneath `CHECKPOINTS_DIR`, scoped to the tracker path so a dry-run copy cannot resume the real tracker’s work. If generation stops, the next claim resumes validated sections instead of discarding them. A successful Markdown draft removes its checkpoint. On validation failure, the client retains the closest structured candidate across retries and models, supplies that JSON back as untrusted article data for targeted repair, logs its word metrics, and reports the best attempt rather than the final attempt.
+
+Before rendering, a separate real LM Studio structured review checks the completed article against the matched source packet and universal constraints. It flags material terminology, unsupported numerical targets, irreversible-action warnings, or cross-section contradictions. Affected sections receive one source-grounded repair pass and the complete article is reviewed again; unresolved material issues prevent a draft from being saved.
+
+The agent tries `openai/gpt-oss-20b` first and makes up to three validation-guided retries per structured stage. Only another LLM advertised by that same LM Studio server is eligible as a fallback; embeddings, downloads, Ollama, hosted OpenAI, Anthropic, and other providers are excluded. Actual selected model, source packet, section progress, attempt word metrics, checkpoint activity, quality-review result, and completion are written to the run log and tracker. `LMSTUDIO_TIMEOUT_MS` defaults to five minutes, while `LMSTUDIO_MAX_TOKENS` defaults to 6,000 to bound a runaway response and produce an explicit completion error.
 
 ## Commands
 
@@ -49,9 +57,9 @@ npm run lint
 npm test
 ```
 
-`once` handles valid outstanding replies then claims/generates at most one row. `worker` repeats at `POLL_INTERVAL_MS`. Dry-run still uses the real configured LM Studio instance and updates only the supplied tracker/draft, but never sends an iMessage or posts to WordPress. Always use a copy when dry-running.
+`once` handles valid outstanding replies then claims/generates at most one row. A generation-error row without a draft has priority so failed work is retried promptly and can resume its checkpoint; otherwise the first pending row is claimed. `worker` repeats at `POLL_INTERVAL_MS`. Dry-run still uses the real configured LM Studio instance and updates only the supplied tracker/draft, but never sends an iMessage or posts to WordPress. Always use a copy when dry-running; checkpoint namespaces are isolated by the tracker’s absolute path.
 
-Markdown source and formatted PDF review copies are saved under `data/drafts/`; JSONL logs are under `data/runs/`. LM Studio returns a structured article plan and structured section blocks; application code validates and assembles them, renders deterministic Markdown and YAML front matter, and names new drafts as `blog-<padded-id>-<slug>.md`. A same-basename `.pdf` preserves the title, headings, paragraphs, lists, tables, code blocks, links, and page numbers for editorial review. The Markdown remains the authoritative source and is converted to WordPress HTML only at posting time. WordPress post lookup by slug prevents duplicate posting after restart; post ID/URL/date are stored only after WordPress confirms the response.
+Markdown source and formatted PDF review copies are saved under `data/drafts/`; resumable generation state is under `data/checkpoints/`; JSONL logs are under `data/runs/`. LM Studio returns a structured article plan and named section paragraphs; application code validates and assembles them, renders deterministic Markdown and YAML front matter, and names new drafts as `blog-<padded-id>-<slug>.md`. A same-basename `.pdf` preserves the title, headings, paragraphs, lists, tables, code blocks, links, and page numbers for editorial review. The Markdown remains the authoritative source and is converted to WordPress HTML only at posting time. WordPress post lookup by slug prevents duplicate posting after restart; post ID/URL/date are stored only after WordPress confirms the response.
 
 ## Review adapters and macOS permissions
 
@@ -65,7 +73,7 @@ Copy `docs/com.nolanyoung.wp-blog-agent.plist.example` to `~/Library/LaunchAgent
 
 ## Troubleshooting
 
-Before real model work, confirm server/model availability and stream LM Studio logs: `lms server status`, `lms log stream --source server --json`, and `lms log stream --source model --filter input,output --json --stats`. If no usable LM Studio LLM completes, the row becomes `error`, the user is notified, and WordPress is untouched. This repo’s policy prohibits fake model clients and canned model responses, so deterministic tests cover parsing and file behavior; real generation must be verified against LM Studio.
+Before real model work, confirm server/model availability and stream LM Studio logs: `lms server status`, `lms log stream --source server --json`, and `lms log stream --source model --filter input,output --json --stats`. If no usable LM Studio LLM completes, the row becomes `error`, its valid checkpoint is retained, the user receives the best attempt and its validation reason, and WordPress is untouched. The next `npm run once` retries that row when no pending row comes first. This repo’s policy prohibits fake model clients and canned model responses, so deterministic tests cover parsing and file behavior; real generation must be verified against LM Studio.
 
 ## Full First Instructions
 
@@ -159,7 +167,7 @@ Confirm successful generation in the terminal and inspect `data/drafts/`. The re
 npm run once
 ```
 
-The agent claims the first pending row (blog #2 in the versioned tracker), generates through LM Studio, saves authoritative `.md` and review `.pdf` files in `data/drafts/`, confirms the PDF attachment was sent to `IMESSAGE_RECIPIENT`, sends the approval instructions, and changes the row to `awaiting_review`.
+The agent retries the first generation-error row without a draft, or claims the first pending row when no generation retry is waiting. It generates through LM Studio, saves authoritative `.md` and review `.pdf` files in `data/drafts/`, confirms the PDF attachment was sent to `IMESSAGE_RECIPIENT`, sends the approval instructions, and changes the row to `awaiting_review`.
 
 ### 9. Approve or reject from iMessage
 

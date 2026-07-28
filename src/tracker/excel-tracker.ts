@@ -53,7 +53,9 @@ export class ExcelTracker {
   async claimNext(validFormatIds?: ReadonlySet<string>): Promise<BlogRow | undefined> {
     return this.lock(async () => {
       const { book, sheet, rows } = this.read();
-      const index = rows.findIndex(row => String(row.blog_status).toLowerCase() === 'pending');
+      const pending = rows.findIndex(row => String(row.blog_status).toLowerCase() === 'pending');
+      const retryableError = rows.findIndex(row => String(row.blog_status).toLowerCase() === 'error' && !String(row.markdown_path ?? '').trim());
+      const index = retryableError >= 0 ? retryableError : pending;
       if (index < 0) return undefined;
       const selected = rows[index];
       const length = blogLength(selected.blog_length);

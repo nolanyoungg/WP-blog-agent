@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { BlogRow } from '../domain/blog.js';
 import type { ArticleBlockType, ArticleFormat } from './article-format-registry.js';
+import { sectionGenerationContract } from './article-generator.js';
 
 export interface StructuredBlock {
   type: ArticleBlockType;
@@ -91,21 +92,34 @@ const blockWords = (block: StructuredBlock) => {
   return wordCount(block.code ?? '');
 };
 
+export const structuredSectionWordCount = (blocks: StructuredBlock[]) => blocks.reduce((sum, block) => sum + blockWords(block), 0);
+
 export const validateStructuredSection = (sectionTarget: number, definition: ArticleFormat['sections'][number], generated: StructuredSection, index: number) => {
   if (!generated || typeof generated !== 'object' || Array.isArray(generated)) throw new Error(`Section ${index + 1} must be an object`);
   const heading = requireText(generated.heading, `Section ${index + 1} heading`);
   if (!safeHeading(heading)) throw new Error(`Section ${index + 1} heading must contain text after heading markup is removed`);
   if (!Array.isArray(generated.blocks) || !generated.blocks.length) throw new Error(`Section ${index + 1} must contain at least one block`);
   generated.blocks.forEach((block, blockIndex) => validateBlock(block, definition, `Section ${index + 1} block ${blockIndex + 1}`));
-  const paragraphs = generated.blocks.filter(block => block.type === 'paragraph').length;
-  if (paragraphs < definition.min_paragraphs || paragraphs > definition.max_paragraphs) throw new Error(`Section ${index + 1} requires ${definition.min_paragraphs}-${definition.max_paragraphs} paragraphs; received ${paragraphs}`);
+  const contract = sectionGenerationContract(sectionTarget, definition);
+  const paragraphBlocks = generated.blocks.filter(block => block.type === 'paragraph');
+  if (paragraphBlocks.length !== contract.paragraphCount) throw new Error(`Section ${index + 1} requires exactly ${contract.paragraphCount} paragraphs; received ${paragraphBlocks.length}`);
+  paragraphBlocks.forEach((paragraph, paragraphIndex) => {
+    const count = wordCount(paragraph.text ?? '');
+    if (count < contract.minimumWordsPerParagraph || count > contract.maximumWordsPerParagraph) {
+      throw new Error(`Section ${index + 1} paragraph ${paragraphIndex + 1} requires ${contract.minimumWordsPerParagraph}-${contract.maximumWordsPerParagraph} words; received ${count}`);
+    }
+  });
   for (const required of definition.required_blocks) {
     const matches = generated.blocks.filter(block => block.type === required.type && (!required.language || (typeof block.language === 'string' && block.language.toLowerCase() === required.language.toLowerCase()))).length;
     if (matches < required.min_count) throw new Error(`Section ${index + 1} requires at least ${required.min_count} ${required.type}${required.language ? ` (${required.language})` : ''} block(s); received ${matches}`);
   }
-  const sectionWords = generated.blocks.reduce((sum, block) => sum + blockWords(block), 0);
-  const sectionTolerance = Math.max(30, Math.round(sectionTarget * 0.2));
-  if (Math.abs(sectionWords - sectionTarget) > sectionTolerance) throw new Error(`Section ${index + 1} targets ${sectionTarget} words within ${sectionTolerance}; received ${sectionWords}`);
+  const sectionWords = structuredSectionWordCount(generated.blocks);
+  if (sectionWords < contract.minimumWords || sectionWords > contract.maximumWords) {
+    const adjustment = sectionWords < contract.minimumWords
+      ? `add at least ${contract.minimumWords - sectionWords}`
+      : `remove at least ${sectionWords - contract.maximumWords}`;
+    throw new Error(`Section ${index + 1} targets ${sectionTarget} words and accepts ${contract.minimumWords}-${contract.maximumWords}; received ${sectionWords}; ${adjustment} content words`);
+  }
   return sectionWords;
 };
 

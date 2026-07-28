@@ -21,3 +21,12 @@ test('expands the Messages attachment outbox and delivery settings', () => {
   assert.equal(settings.deliveryPollMs, 100);
   assert.equal(settings.relayTimeoutMs, 90_000);
 });
+
+test('resolves editorial guidance and checkpoint configuration', () => {
+  const settings = config({
+    EDITORIAL_GUIDANCE_PATH: 'config/editorial-guidance.json',
+    CHECKPOINTS_DIR: 'data/checkpoints'
+  });
+  assert.equal(settings.editorialGuidancePath, path.resolve('config/editorial-guidance.json'));
+  assert.equal(settings.checkpointsDir, path.resolve('data/checkpoints'));
+});

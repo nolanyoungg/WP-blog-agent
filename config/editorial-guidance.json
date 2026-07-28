@@ -1,0 +1,31 @@
+{
+  "universal_guidance": [
+    "Do not present an arbitrary percentage, time window, score, or benchmark as a universal target.",
+    "Distinguish a reader-chosen example from a sourced product limit or definition.",
+    "Use current product terminology and qualify behavior that varies by configuration.",
+    "Warn readers before recommending an irreversible filter, deletion, publication, migration, or configuration action."
+  ],
+  "rules": [
+    {
+      "id": "google-analytics-4",
+      "topic_patterns": ["analytics", "conversion rate", "drop-off"],
+      "sources": [
+        {
+          "id": "google-ga4-engagement",
+          "url": "https://support.google.com/analytics/answer/12195621?hl=en",
+          "note": "GA4 bounce rate is the percentage of sessions that were not engaged. An engaged session lasts longer than 10 seconds, has a key event, or has at least two page or screen views."
+        },
+        {
+          "id": "google-ga4-key-events",
+          "url": "https://support.google.com/analytics/answer/9267568?hl=en",
+          "note": "In Google Analytics reporting, an important business action is a key event. A Google Ads conversion can be created from a Google Analytics key event."
+        },
+        {
+          "id": "google-ga4-internal-traffic",
+          "url": "https://support.google.com/analytics/answer/10104470?hl=en",
+          "note": "An active GA4 data filter permanently changes incoming data. Excluded data is not processed or available later, so test an internal-traffic filter before activating it."
+        }
+      ]
+    }
+  ]
+}

@@ -4,6 +4,11 @@
 
 ### Added
 
+- Tracker-scoped, atomic generation checkpoints under `data/checkpoints/`, allowing a stopped or failed article to resume its validated plan and completed sections.
+- `config/editorial-guidance.json` with universal factual-safety constraints and authoritative Google Analytics source notes for current GA4 bounce-rate, key-event, and internal-traffic behavior.
+- A real LM Studio structured quality-review stage that flags material factual/safety issues, repairs affected sections once, and re-reviews the completed article before any draft is saved.
+- Per-attempt section word metrics, paragraph counts, best-attempt metadata, selected editorial rule/source IDs, checkpoint events, and quality-review results in JSONL run logs.
+- Deterministic coverage for canonical paragraph contracts, fixed section schemas, generation-error retry selection, checkpoint identity/removal, GA4 source matching, quality-review parsing, and new environment paths.
 - Formatted PDF review artifacts alongside authoritative Markdown drafts, including readable headings, paragraphs, lists, tables, code blocks, link destinations, document metadata, and page-numbered footers.
 - A configurable macOS Messages attachment outbox under Pictures plus database-backed attachment send confirmation and bounded polling settings.
 - Extensible blog format definitions under `config/blog-formats/`, with authoritative `format.json` rules and readable `example.md` files for the real `short`, `medium`, and `long` formats.
@@ -24,6 +29,11 @@
 
 ### Changed
 
+- Section generation now uses fixed required paragraph fields backed by one canonical ±15% word contract shared by prompts and deterministic validation. This avoids the previously problematic block-array maximum while making paragraph count structural.
+- Validation retries now preserve the closest structured candidate across models and ask LM Studio to repair that JSON as untrusted article data instead of independently resampling every attempt.
+- Generation-error rows without a saved draft now have claim priority so failed work is retried before new pending work; posting errors with a `markdown_path` are never regenerated.
+- Format-level `writing_guidance` now reaches both the plan and every section prompt, and `npm run formats:validate` also loads and validates editorial guidance.
+- Section validation messages now state the accepted range, received count, and minimum number of words to add or remove. Final failures and iMessage notifications identify the best attempt instead of only the last attempt.
 - The versioned tracker now records Blog #18's confirmed generation error and Blog #21's completed real-model draft as awaiting review, without changing the SEO plan or format reference sheets.
 - Review delivery now preserves Markdown for WordPress, renders a same-basename PDF for the recipient, sends the PDF before the ready text, and records `imessage.sent` only after Messages reports that attachment as sent or delivered.
 - The relay request timeout now defaults to 90 seconds so it remains longer than the Mac's 60-second attachment confirmation window.
@@ -42,6 +52,10 @@
 
 ### Fixed
 
+- Prevent systematic one-paragraph under-generation by requiring every calculated paragraph field in the LM Studio schema and enforcing the identical paragraph count and word range after parsing.
+- Eliminate prompt/schema/validator disagreement: section targets, accepted ranges, paragraph counts, and per-paragraph limits are now calculated once.
+- Preserve completed generation work across process exits and section failures instead of abandoning the entire article.
+- Prevent outdated GA4 definitions, obsolete conversion-event terminology, unsupported universal thresholds, and unqualified irreversible-filter advice from passing without a source-grounded review opportunity.
 - Avoid silent macOS Messages attachment loss by staging PDFs under Pictures, passing a real POSIX file reference, detecting native transfer errors in `chat.db`, and withholding the ready text when attachment delivery fails.
 - Keep a confirmed WordPress post recorded as `posted` if its optional iMessage confirmation cannot be delivered.
 - Persist the inline `blog_type` data-validation rule in the actual XLSX package, including after atomic tracker updates, rather than setting an in-memory worksheet property that the writer does not serialize.
@@ -61,12 +75,14 @@
 
 ### Removed
 
+- Independent retry resampling that discarded every rejected section candidate and reported only the final model response.
 - The hard-coded format union, fixed heading-count map, vague `generation/blog.ts`, `tracker/excel.ts`, and combined `types.ts` modules.
 - Accidental macOS `.DS_Store` metadata from version control; the ignore rules now prevent it from being recommitted.
 - The `SEO Content Plan` and generated `Blog Formats` worksheets, plus the `BlogFormatIds` named range; the versioned workbook now contains only `Blog tracker`.
 
 ### Tested
 
+- `npm run lint`, all 23 deterministic tests, `npm run formats:validate`, direct JSON parsing for every format plus editorial guidance, and `git diff --check` pass with the new reliability and quality pipeline.
 - Merged the PDF iMessage attachment work into `main`; `npm run lint` completed successfully and all 20 deterministic tests passed.
 - Before the single-sheet migration, the final tracker snapshot was stable after the worker stopped, re-imported successfully, retained all three sheets and the `BlogFormatIds` name, and contained no formula-error values.
 - A real LM Studio run for Blog #21 completed all ten sections, created 10,195-byte Markdown and 11,670-byte PDF artifacts, delivered the PDF through Messages, and finished at `awaiting_review`; the run log and tracker agree on the completion timestamp and selected models.

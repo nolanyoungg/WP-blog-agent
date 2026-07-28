@@ -3,11 +3,20 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePlan, parseArticleSection, promptForArticlePlan, promptForArticleSection } from '../src/generation/article-generator.js';
+import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePlan, parseArticleSection, promptForArticlePlan, promptForArticleSection, sectionGenerationContract } from '../src/generation/article-generator.js';
 import { ArticleFormatRegistry } from '../src/generation/article-format-registry.js';
 import { parseDraft, renderAndValidateArticle, saveDraft, type StructuredArticle } from '../src/generation/article-markdown-renderer.js';
 
 const words = (count: number, prefix: string) => Array.from({ length: count }, (_, index) => `${prefix}${index + 1}`).join(' ');
+const paragraphBlocks = (count: number, prefix: string, section: any) => {
+  const contract = sectionGenerationContract(count, section);
+  const base = Math.floor(count / contract.paragraphCount);
+  const remainder = count % contract.paragraphCount;
+  return Array.from({ length: contract.paragraphCount }, (_, index) => ({
+    type: 'paragraph' as const,
+    text: words(base + (index < remainder ? 1 : 0), `${prefix}${index}-`)
+  }));
+};
 
 test('format prompt and schema use the selected external definition', async () => {
   const registry = await ArticleFormatRegistry.load(path.resolve('config/blog-formats'));
@@ -28,10 +37,11 @@ test('format prompt and schema use the selected external definition', async () =
     headings: format.sections.map((_, index) => `Section ${index + 1}`)
   };
   const sectionPrompt = promptForArticleSection(row, format, plan, 1);
-  const sectionSchema = articleSectionResponseSchema(format.sections[1]) as any;
-  assert.match(sectionPrompt, /use exactly 2 paragraph blocks of 68-83 words each/i);
-  assert.deepEqual(sectionSchema.properties.blocks.items.required, ['type', 'text']);
-  assert.deepEqual(sectionSchema.properties.blocks.items.properties.type.enum, ['paragraph']);
+  const sectionSchema = articleSectionResponseSchema(format.sections[1], 150) as any;
+  assert.match(sectionPrompt, /paragraph_1, paragraph_2/i);
+  assert.match(sectionPrompt, /63-87 words/i);
+  assert.deepEqual(sectionSchema.properties.paragraphs.required, ['paragraph_1', 'paragraph_2']);
+  assert.equal(sectionSchema.properties.blocks, undefined);
 });
 
 test('renderer guarantees exactly one H1 per format section', async () => {
@@ -46,7 +56,10 @@ test('renderer guarantees exactly one H1 per format section', async () => {
     tags: ['performance'],
     sections: targets.map((target, index) => ({
       heading: index === 0 ? 'Ignored first heading' : `Section ${index + 1}`,
-      blocks: [{ type: 'paragraph', text: `${index === 1 ? '# Unexpected heading marker ' : ''}${words(target - (index === 1 ? 3 : 0), `s${index}-`)}`, attribution: '', items: [], headers: [], rows: [], language: '', code: '' }]
+      blocks: paragraphBlocks(target, `s${index}-`, format.sections[index]).map((block, blockIndex) => ({
+        ...block,
+        text: `${index === 1 && blockIndex === 0 ? '# Unexpected heading marker ' : ''}${index === 1 && blockIndex === 0 ? words(block.text.split(/\s+/).length - 3, `s${index}-${blockIndex}-`) : block.text}`
+      }))
     }))
   };
   const markdown = renderAndValidateArticle({ blog_length: 500 }, format, article);
@@ -86,14 +99,15 @@ test('renderer supports a future fenced-code requirement without counting code c
     sections: targets.map((target, index) => ({
       heading: `Section ${index + 1}`,
       blocks: [
-        { type: 'paragraph', text: words(target, `p${index}-`), attribution: '', items: [], headers: [], rows: [], language: '', code: '' },
+        ...paragraphBlocks(target, `p${index}-`, format.sections[index]),
         ...(index === 1 ? [{ type: 'fenced_code' as const, text: '', attribution: '', items: [], headers: [], rows: [], language: 'bash', code: '# generated comment' }] : [])
       ]
     }))
   };
   const markdown = renderAndValidateArticle({ blog_length: 500 }, format, article);
-  const schema = articleSectionResponseSchema(format.sections[1]) as any;
-  assert.deepEqual(schema.properties.blocks.items.properties.type.enum.sort(), ['fenced_code', 'paragraph']);
+  const schema = articleSectionResponseSchema(format.sections[1], 150) as any;
+  assert.deepEqual(schema.properties.paragraphs.required, ['paragraph_1', 'paragraph_2']);
+  assert.deepEqual(schema.properties.required_blocks.items.properties.type.enum, ['fenced_code']);
   assert.match(markdown, /```bash\n# generated comment\n```/);
   assert.equal((markdown.match(/^#\s+.+$/gm) ?? []).length, 5);
 });
