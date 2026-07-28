@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
-import { copyFile, readFile, stat } from 'node:fs/promises';
-import { basename, dirname, extname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { chmod, copyFile, mkdir, readFile, rm, stat } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { Message, MessageAdapter } from './types.js';
 
@@ -15,14 +16,15 @@ export const parseReview = (text: string) => {
   return match ? { decision: match[1].toLowerCase() === 'yes' ? 'approved' as const : 'rejected' as const, blogId: match[2] } : undefined;
 };
 
-// Messages records .md review files as text/markdown, which can remain undelivered
-// even though the accompanying text message arrives. A .txt copy keeps the exact
-// article content while using the broadly supported text/plain attachment type.
-export const macOSReviewAttachment = async (path: string) => {
-  if (extname(path).toLowerCase() !== '.md') return path;
-  const readablePath = join(dirname(path), `${basename(path, extname(path))}.txt`);
-  await copyFile(path, readablePath);
-  return readablePath;
+export const stageMacOSAttachment = async (path: string, outbox: string) => {
+  const source = await stat(path);
+  if (!source.isFile()) throw new Error(`iMessage attachment is not a file: ${path}`);
+  const directory = join(outbox, randomUUID());
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const stagedPath = join(directory, basename(path));
+  await copyFile(path, stagedPath);
+  await chmod(stagedPath, 0o600);
+  return { path: stagedPath, cleanup: () => rm(directory, { recursive: true, force: true }) };
 };
 
 export class DryRunMessageAdapter implements MessageAdapter {
@@ -31,19 +33,60 @@ export class DryRunMessageAdapter implements MessageAdapter {
 }
 
 export class MacOSMessagesAdapter implements MessageAdapter {
-  constructor(private readonly recipient: string, private readonly chatDb: string) {
+  constructor(
+    private readonly recipient: string,
+    private readonly chatDb: string,
+    private readonly attachmentOutbox: string,
+    private readonly deliveryTimeoutMs: number,
+    private readonly deliveryPollMs: number
+  ) {
     if (process.platform !== 'darwin') throw new Error('The macOS Messages adapter can only run on macOS; use IMESSAGE_ADAPTER=dry-run elsewhere');
     if (!recipient) throw new Error('IMESSAGE_RECIPIENT is required for the macOS Messages adapter');
+    if (deliveryTimeoutMs <= 0) throw new Error('IMESSAGE_DELIVERY_TIMEOUT_MS must be greater than zero');
+    if (deliveryPollMs <= 0) throw new Error('IMESSAGE_DELIVERY_POLL_MS must be greater than zero');
+  }
+
+  private async attachmentCursor() {
+    const query = `SELECT COALESCE(MAX(m.ROWID), 0) FROM message m JOIN handle h ON m.handle_id=h.ROWID WHERE h.id=${sqlString(this.recipient)} AND m.is_from_me=1;`;
+    const { stdout } = await exec('sqlite3', ['-readonly', this.chatDb, query]);
+    const value = Number(stdout.trim());
+    if (!Number.isSafeInteger(value) || value < 0) throw new Error('Messages database returned an invalid outgoing-message cursor');
+    return value;
+  }
+
+  private async waitForAttachment(filename: string, afterRowId: number) {
+    const deadline = Date.now() + this.deliveryTimeoutMs;
+    const query = `SELECT m.error, m.is_sent, m.is_delivered, a.transfer_state FROM message m JOIN handle h ON m.handle_id=h.ROWID JOIN message_attachment_join j ON j.message_id=m.ROWID JOIN attachment a ON a.ROWID=j.attachment_id WHERE h.id=${sqlString(this.recipient)} AND m.is_from_me=1 AND m.ROWID>${afterRowId} AND a.transfer_name=${sqlString(filename)} ORDER BY m.ROWID DESC LIMIT 1;`;
+    while (Date.now() <= deadline) {
+      const { stdout } = await exec('sqlite3', ['-readonly', '-separator', '\t', this.chatDb, query]);
+      if (stdout.trim()) {
+        const [error, sent, delivered, transferState] = stdout.trim().split('\t').map(Number);
+        if (error) throw new Error(`Messages failed to send attachment ${filename} (error ${error}, transfer state ${transferState})`);
+        if (sent === 1 || delivered === 1) return;
+      }
+      await new Promise(resolve => setTimeout(resolve, this.deliveryPollMs));
+    }
+    throw new Error(`Messages did not confirm attachment ${filename} within ${this.deliveryTimeoutMs}ms`);
   }
 
   async send(text: string, attachment?: string) {
     const recipient = escapeAppleScript(this.recipient);
     const message = escapeAppleScript(text);
-    const reviewAttachment = attachment ? await macOSReviewAttachment(attachment) : undefined;
-    const script = attachment
-      ? `set attachmentFile to (POSIX file "${escapeAppleScript(reviewAttachment!)}") as alias\ntell application "Messages"\nset targetService to 1st service whose service type = iMessage\nset targetBuddy to buddy "${recipient}" of targetService\nsend "${message}" to targetBuddy\nsend attachmentFile to targetBuddy\nend tell`
-      : `tell application "Messages" to send "${message}" to buddy "${recipient}" of (1st service whose service type = iMessage)`;
-    await exec('osascript', ['-e', script]);
+    if (!attachment) {
+      await exec('osascript', ['-e', `tell application "Messages" to send "${message}" to participant "${recipient}" of (1st account whose service type = iMessage)`]);
+      return;
+    }
+
+    const staged = await stageMacOSAttachment(attachment, this.attachmentOutbox);
+    try {
+      const cursor = await this.attachmentCursor();
+      const script = `set attachmentFile to POSIX file "${escapeAppleScript(staged.path)}"\ntell application "Messages"\nset targetAccount to 1st account whose service type = iMessage\nset targetParticipant to participant "${recipient}" of targetAccount\nsend attachmentFile to targetParticipant\nend tell`;
+      await exec('osascript', ['-e', script]);
+      await this.waitForAttachment(basename(staged.path), cursor);
+      await exec('osascript', ['-e', `tell application "Messages" to send "${message}" to participant "${recipient}" of (1st account whose service type = iMessage)`]);
+    } finally {
+      await staged.cleanup();
+    }
   }
 
   async latestReplies(): Promise<Message[]> {
