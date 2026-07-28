@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import XLSX from 'xlsx';
 import { ArticleFormatRegistry } from '../src/generation/article-format-registry.js';
-import { syncBlogFormatSheet } from '../src/tracker/blog-format-sheet.js';
+import { syncBlogFormatDropdown } from '../src/tracker/blog-format-dropdown.js';
 import { hasBlogFormatDataValidation } from '../src/tracker/xlsx-data-validation.js';
 import { ExcelTracker } from '../src/tracker/excel-tracker.js';
 
@@ -57,7 +57,7 @@ test('invalid temporary format definitions fail before generation', async () => 
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('format synchronization writes the discovered registry into a temporary tracker', async () => {
+test('format synchronization writes an inline dropdown and removes obsolete reference sheets', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'wp-blog-format-sync-'));
   const tracker = path.join(root, 'tracker.xlsx');
   try {
@@ -66,17 +66,18 @@ test('format synchronization writes the discovered registry into a temporary tra
       ['blog_id', 'blog_topic', 'blog_length', 'blog_type', 'blog_status', 'blog_created_date', 'blog_posted_date'],
       ['2', 'Temporary tracker row', 500, 'short', 'pending', '', '']
     ]), 'Blog tracker');
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([['obsolete']]), 'SEO Content Plan');
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([['format_id'], ['short']]), 'Blog Formats');
+    book.Workbook = { Names: [{ Name: 'BlogFormatIds', Ref: "'Blog Formats'!$A$2:$A$2" }] };
     XLSX.writeFile(book, tracker);
     const registry = await ArticleFormatRegistry.load(path.resolve('config/blog-formats'));
-    assert.equal(await syncBlogFormatSheet(tracker, registry), 3);
+    const formatIds = registry.ids();
+    assert.equal(await syncBlogFormatDropdown(tracker, registry), 3);
     const synced = XLSX.readFile(tracker, { cellStyles: true });
-    assert.ok(synced.SheetNames.includes('Blog Formats'));
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(synced.Sheets['Blog Formats']);
-    assert.deepEqual(rows.map(row => row.format_id).sort(), ['long', 'medium', 'short']);
-    assert.deepEqual(rows.map(row => row.h1_count).sort((a, b) => Number(a) - Number(b)), [4, 6, 10]);
-    assert.ok((synced.Sheets['Blog Formats']['!rows']?.[1]?.hpt ?? 0) >= 200);
-    assert.equal(await hasBlogFormatDataValidation(tracker), true);
+    assert.deepEqual(synced.SheetNames, ['Blog tracker']);
+    assert.equal(synced.Workbook?.Names?.some(name => name.Name === 'BlogFormatIds'), false);
+    assert.equal(await hasBlogFormatDataValidation(tracker, formatIds), true);
     await new ExcelTracker(tracker).update('2', { review_status: 'pending' });
-    assert.equal(await hasBlogFormatDataValidation(tracker), true);
+    assert.equal(await hasBlogFormatDataValidation(tracker, formatIds), true);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

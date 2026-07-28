@@ -15,7 +15,7 @@ cp .env.example .env
 
 Set the iMessage recipient, tracker location, WordPress URL/user/application password, and keep `WORDPRESS_POST_STATUS=draft` unless intentional publication is required. HTTPS is enforced unless `WORDPRESS_ALLOW_HTTP=true` is explicitly set for local development. Do not commit `.env`, drafts, logs, or ad hoc workbook copies.
 
-The workbook has a `Blog tracker` sheet with exactly these columns: `blog_id`, `blog_topic`, `blog_length`, `blog_type`, `blog_status`, `blog_created_date`, `blog_posted_date`, `markdown_path`, `review_status`, `review_token`, `model_used`, `wordpress_post_id`, and `wordpress_url`. `blog_length` is the independent target content-word count. `blog_type` is a format ID discovered from `config/blog-formats/`, not a TypeScript enum. The bundled definitions are `short` (exactly 4 H1 headings), `medium` (6), and `long` (10). Before review, the agent enforces the selected format’s section allocation, paragraph limits, allowed and required blocks, metadata, exact H1 count, and overall word tolerance, retrying with the precise validation failure when needed. The agent atomically writes a validated temporary workbook and uses an exclusive sidecar lock to prevent two workers claiming the same pending row. The versioned workbook also includes an `SEO Content Plan` sheet for planning and a generated `Blog Formats` reference sheet.
+The workbook contains only a `Blog tracker` sheet with exactly these columns: `blog_id`, `blog_topic`, `blog_length`, `blog_type`, `blog_status`, `blog_created_date`, `blog_posted_date`, `markdown_path`, `review_status`, `review_token`, `model_used`, `wordpress_post_id`, and `wordpress_url`. `blog_length` is the independent target content-word count. `blog_type` is a format ID discovered from `config/blog-formats/`, not a TypeScript enum. The bundled definitions are `short` (exactly 4 H1 headings), `medium` (6), and `long` (10). Before review, the agent enforces the selected format’s section allocation, paragraph limits, allowed and required blocks, metadata, exact H1 count, and overall word tolerance, retrying with the precise validation failure when needed. The agent atomically writes a validated temporary workbook, preserves the inline `blog_type` dropdown, and uses an exclusive sidecar lock to prevent two workers claiming the same pending row.
 
 ## Blog format definitions
 
@@ -28,7 +28,7 @@ npm run formats:validate
 npm run formats:sync
 ```
 
-Validation is read-only and rejects duplicate IDs, missing files, invalid examples, malformed paragraph/block rules, and word percentages that do not total 100. Sync regenerates `Blog Formats` and the `blog_type` dropdown from the discovered definitions. No TypeScript edit or committed test format is needed.
+Validation is read-only and rejects duplicate IDs, missing files, invalid examples, malformed paragraph/block rules, and word percentages that do not total 100. Sync writes the discovered IDs directly into the `blog_type` dropdown without creating a reference worksheet or named range. No TypeScript edit or committed test format is needed.
 
 ## LM Studio behavior
 
@@ -81,7 +81,7 @@ cd WP-blog-agent
 ls -l manual-files/wordpress-blog-content-tracker.xlsx
 ```
 
-The starter tracker contains the existing posted row plus the 50-post plan (IDs `2`–`51`), a generated `Blog Formats` sheet, and a format-ID dropdown. Blog #2 is the first pending row.
+The starter tracker contains only `Blog tracker`, including the existing content queue (IDs `1`–`51`) and a format-ID dropdown sourced from `config/blog-formats/`.
 
 ### 2. Install Node dependencies
 
@@ -133,7 +133,7 @@ Create the Application Password under the dedicated WordPress user’s profile. 
 
 ### 5. Enter the first topic in the tracker
 
-Open `manual-files/wordpress-blog-content-tracker.xlsx` in Excel or Numbers. In `Blog tracker`, add a new unique `blog_id`, enter the exact topic, set the independent `blog_length` target (for example, `500` or `1500`), and select a `blog_type` ID from the generated dropdown. The bundled `short`, `medium`, and `long` definitions render exactly 4, 6, and 10 H1 sections. Keep `blog_status` as `pending`, then save. Do not change the header row; leave generated/result columns blank. The bundled workbook is already seeded with a 50-post Shibey plan (IDs `2`–`51`); use `SEO Content Plan` to review the primary query, search intent, service-page link, and CTA, and use `Blog Formats` to review structural rules.
+Open `manual-files/wordpress-blog-content-tracker.xlsx` in Excel or Numbers. In `Blog tracker`, add a new unique `blog_id`, enter the exact topic, set the independent `blog_length` target (for example, `500` or `1500`), and select a `blog_type` ID from the inline dropdown. The bundled `short`, `medium`, and `long` definitions render exactly 4, 6, and 10 H1 sections. Keep `blog_status` as `pending`, then save. Do not change the header row; leave generated/result columns blank. Run `npm run formats:sync` after adding or removing a definition under `config/blog-formats/`.
 
 ### 6. Run a safe real-LM-Studio dry-run on a copy
 
