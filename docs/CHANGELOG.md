@@ -4,6 +4,7 @@
 
 ### Added
 
+- 125 SEO-focused Shibey content topics across website development, app development, custom software, technical SEO, and analytics, extending the tracker through Blog #176.
 - Extensible blog formats under `config/blog-formats/`. Each format owns an approximate `target_words` value and an `example.md` structural template.
 - Tracker-scoped, atomic generation checkpoints that resume a plan and completed sections only when the tracker row and template contents still match.
 - Formatted PDF review artifacts alongside the authoritative Markdown drafts.

@@ -85,7 +85,7 @@ cd WP-blog-agent
 ls -l manual-files/wordpress-blog-content-tracker.xlsx
 ```
 
-The starter tracker contains only `Blog tracker`, including the existing content queue (IDs `1`–`51`) and a format-ID dropdown sourced from `config/blog-formats/`.
+The starter tracker contains only `Blog tracker`, including the existing content queue (IDs `1`–`176`) and a format-ID dropdown sourced from `config/blog-formats/`.
 
 ### 2. Install Node dependencies
 
