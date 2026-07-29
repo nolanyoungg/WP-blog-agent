@@ -16,6 +16,9 @@ export const parseReview = (text: string) => {
   return match ? { decision: match[1].toLowerCase() === 'yes' ? 'approved' as const : 'rejected' as const, blogId: match[2] } : undefined;
 };
 
+export const postedNotification = (blogId: string, title: string, wordpressUrl: string) =>
+  `Draft Posted!\n\n#${blogId}\n\n${title}\n\n${wordpressUrl}`;
+
 export const stageMacOSAttachment = async (path: string, outbox: string) => {
   const source = await stat(path);
   if (!source.isFile()) throw new Error(`iMessage attachment is not a file: ${path}`);

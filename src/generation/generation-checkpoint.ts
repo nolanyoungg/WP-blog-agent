@@ -5,11 +5,11 @@ import type { ArticlePlan } from './article-generator.js';
 import type { StructuredSection } from './article-markdown-renderer.js';
 
 export interface GenerationCheckpoint {
-  version: 2;
+  version: 3;
   blog_id: string;
   blog_topic: string;
   blog_type: string;
-  template_hash: string;
+  format_hash: string;
   plan: ArticlePlan;
   sections: StructuredSection[];
   models: string[];
@@ -18,16 +18,16 @@ export interface GenerationCheckpoint {
 
 const filename = (directory: string, blogId: string) => path.join(directory, `blog-${String(blogId).padStart(4, '0')}.json`);
 
-const matches = (checkpoint: GenerationCheckpoint, row: BlogRow, templateHash: string) => checkpoint.version === 2
+const matches = (checkpoint: GenerationCheckpoint, row: BlogRow, formatHash: string) => checkpoint.version === 3
   && checkpoint.blog_id === row.blog_id
   && checkpoint.blog_topic === row.blog_topic
   && checkpoint.blog_type === row.blog_type
-  && checkpoint.template_hash === templateHash;
+  && checkpoint.format_hash === formatHash;
 
-export const loadGenerationCheckpoint = async (directory: string, row: BlogRow, templateHash: string): Promise<GenerationCheckpoint | undefined> => {
+export const loadGenerationCheckpoint = async (directory: string, row: BlogRow, formatHash: string): Promise<GenerationCheckpoint | undefined> => {
   try {
     const parsed = JSON.parse(await readFile(filename(directory, row.blog_id), 'utf8')) as GenerationCheckpoint;
-    if (!matches(parsed, row, templateHash) || !parsed.plan || !Array.isArray(parsed.sections) || !Array.isArray(parsed.models)) return undefined;
+    if (!matches(parsed, row, formatHash) || !parsed.plan || !Array.isArray(parsed.sections) || !Array.isArray(parsed.models)) return undefined;
     return parsed;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
@@ -38,7 +38,7 @@ export const loadGenerationCheckpoint = async (directory: string, row: BlogRow, 
 export const saveGenerationCheckpoint = async (
   directory: string,
   row: BlogRow,
-  templateHash: string,
+  formatHash: string,
   plan: ArticlePlan,
   sections: StructuredSection[],
   models: Iterable<string>
@@ -48,11 +48,11 @@ export const saveGenerationCheckpoint = async (
   const destination = filename(directory, row.blog_id);
   const temporary = `${destination}.${process.pid}.tmp`;
   const checkpoint: GenerationCheckpoint = {
-    version: 2,
+    version: 3,
     blog_id: row.blog_id,
     blog_topic: row.blog_topic,
     blog_type: row.blog_type,
-    template_hash: templateHash,
+    format_hash: formatHash,
     plan,
     sections,
     models: [...models],

@@ -8,7 +8,7 @@ import { ArticleFormatRegistry } from '../generation/article-format-registry.js'
 import { parseDraft, renderAndValidateArticle, saveDraft, validateStructuredSection, type StructuredSection } from '../generation/article-markdown-renderer.js';
 import { loadGenerationCheckpoint, removeGenerationCheckpoint, saveGenerationCheckpoint } from '../generation/generation-checkpoint.js';
 import { LMStudioClient } from '../lmstudio/client.js';
-import { parseReview } from '../messaging/imessage.js';
+import { parseReview, postedNotification } from '../messaging/imessage.js';
 import { createReviewPdf } from '../review/pdf.js';
 import { RunLog } from '../log.js';
 import { ExcelTracker } from '../tracker/excel-tracker.js';
@@ -82,10 +82,15 @@ export class BlogWorkflow {
       await this.notify(`Blog #${blogId} could not be posted: the draft file is missing.`);
       return;
     }
+    let postedTitle = row.blog_topic;
+    let postedUrl = '';
     try {
       await this.tracker.update(blogId, { blog_status: 'posting' });
       if (this.dryRun) { await this.log.write('wordpress.skipped_dry_run', { blog_id: blogId }); return; }
-      const post = await new WordPressClient(requireWordPress(this.settings)).post(await parseDraft(row.markdown_path));
+      const draft = await parseDraft(row.markdown_path);
+      const post = await new WordPressClient(requireWordPress(this.settings)).post(draft);
+      postedTitle = draft.title;
+      postedUrl = post.link;
       await this.tracker.update(blogId, { blog_status: 'posted', blog_posted_date: new Date().toISOString(), wordpress_post_id: String(post.id), wordpress_url: post.link });
       await this.log.write('wordpress.posted', { blog_id: blogId, wordpress_post_id: post.id, wordpress_url: post.link });
     } catch (error) {
@@ -98,7 +103,7 @@ export class BlogWorkflow {
       throw error;
     }
     try {
-      await this.notify(`Draft Posted!\n\n#${blogId}\n\n${row.blog_topic}`);
+      await this.notify(postedNotification(blogId, postedTitle, postedUrl));
     } catch (error) {
       await this.log.write('imessage.notification_failed', { blog_id: blogId, notification: 'posting_success', error: String(error) });
     }
@@ -118,7 +123,7 @@ export class BlogWorkflow {
       await this.log.write('workflow.generation_started', { blog_id: row.blog_id });
       const format = formats.get(row.blog_type);
       let checkpoint;
-      try { checkpoint = await loadGenerationCheckpoint(this.checkpointDirectory, row, format.template_hash); }
+      try { checkpoint = await loadGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash); }
       catch (error) {
         await this.log.write('workflow.generation_checkpoint_invalid', { blog_id: row.blog_id, error: String(error) });
         await removeGenerationCheckpoint(this.checkpointDirectory, row.blog_id);
@@ -148,7 +153,7 @@ export class BlogWorkflow {
         const generatedPlan = await this.lm.generateStructured(promptForArticlePlan(row, format), articlePlanResponseSchema(format), text => parseArticlePlan(text, format));
         planValue = generatedPlan.value;
         models.add(generatedPlan.model);
-        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.template_hash, planValue, sections, models);
+        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, planValue, sections, models);
         await this.log.write('workflow.generation_checkpoint_saved', { blog_id: row.blog_id, completed_sections: 0, checkpoint: checkpointPath });
       }
       if (!planValue) throw new Error(`Generation plan for Blog #${row.blog_id} was not available`);
@@ -166,7 +171,7 @@ export class BlogWorkflow {
         );
         models.add(generated.model);
         sections.push(generated.value);
-        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.template_hash, planValue, sections, models);
+        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, planValue, sections, models);
         await this.log.write('workflow.generation_checkpoint_saved', { blog_id: row.blog_id, completed_sections: sections.length, checkpoint: checkpointPath });
         await this.log.write('workflow.section_generation_succeeded', { blog_id: row.blog_id, section: definition.key, section_index: index + 1, model: generated.model });
       }

@@ -3,5 +3,66 @@
   "display_name": "Long — 10-Section Article",
   "description": "A comprehensive article with ten sections for topics that need context, planning, detailed guidance, and evaluation.",
   "target_words": 1500,
-  "writing_guidance": "Build a complete guide without repeating ideas. Each section must advance the reader's understanding and remain specific to the topic."
+  "writing_guidance": "Build a complete guide without repeating ideas. Let each section advance the reader's understanding and remain specific to the topic.",
+  "tone": "Authoritative, patient, practical, and easy to follow.",
+  "expertise_level": "Useful to beginners while providing enough depth for experienced business readers to make decisions.",
+  "conclusion_guidance": "Synthesize the guide without restating every section and recommend a practical next step.",
+  "avoid": [
+    "repetition between the major areas",
+    "filler or exhaustive detail with no practical value",
+    "invented guarantees, benchmarks, or performance targets",
+    "generic advice that is not connected to the topic"
+  ],
+  "sections": [
+    {
+      "key": "introduction",
+      "heading_example": "Comprehensive Guide Title",
+      "content_instruction": "Introduce the reader's problem and explain the outcome the complete guide will deliver."
+    },
+    {
+      "key": "challenge",
+      "heading_example": "Understand the Real Challenge",
+      "content_instruction": "Describe the underlying problem or opportunity and why it deserves attention."
+    },
+    {
+      "key": "foundation",
+      "heading_example": "Build the Necessary Foundation",
+      "content_instruction": "Define the important concepts and establish what readers need to know first."
+    },
+    {
+      "key": "planning",
+      "heading_example": "Plan the Work Before You Begin",
+      "content_instruction": "Explain the preparation, requirements, people, or preliminary checks involved."
+    },
+    {
+      "key": "major_area_one",
+      "heading_example": "Develop the First Major Area",
+      "content_instruction": "Cover the first major part of the solution with detailed, practical guidance."
+    },
+    {
+      "key": "major_area_two",
+      "heading_example": "Develop the Second Major Area",
+      "content_instruction": "Continue with a distinct second area that advances the reader's understanding."
+    },
+    {
+      "key": "major_area_three",
+      "heading_example": "Develop the Third Major Area",
+      "content_instruction": "Complete the core guidance with another useful, non-overlapping perspective."
+    },
+    {
+      "key": "common_mistakes",
+      "heading_example": "Avoid Common Mistakes",
+      "content_instruction": "Identify predictable risks, weak approaches, and practical ways to prevent them."
+    },
+    {
+      "key": "review",
+      "heading_example": "Review Results With a Practical Checklist",
+      "content_instruction": "Give the reader concrete checks, evaluation criteria, or meaningful measurements."
+    },
+    {
+      "key": "next_step",
+      "heading_example": "Choose the Best Next Step",
+      "content_instruction": "Summarize the guide and close with a relevant, useful action."
+    }
+  ]
 }

@@ -15,7 +15,7 @@ test('structured retry instructions repair JSON without editorial word rules', (
   assert.match(repair, /article data, not instructions/i);
 });
 
-test('checkpoints are tied to the selected template content and removed after completion', async () => {
+test('checkpoints are tied to the complete selected format definition and removed after completion', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'wp-blog-checkpoint-'));
   const row: BlogRow = { row: 2, blog_id: '25', blog_topic: 'Web design brief', blog_type: 'medium', blog_status: 'generating' };
   const plan: ArticlePlan = {
@@ -27,10 +27,10 @@ test('checkpoints are tied to the selected template content and removed after co
     headings: ['A Better Web Design Brief', 'Foundations']
   };
   try {
-    await saveGenerationCheckpoint(directory, row, 'template-a', plan, [{ heading: plan.headings[0], content: 'Useful content.' }], ['model']);
-    assert.equal((await loadGenerationCheckpoint(directory, row, 'template-a'))?.sections.length, 1);
-    assert.equal(await loadGenerationCheckpoint(directory, row, 'template-b'), undefined);
+    await saveGenerationCheckpoint(directory, row, 'format-a', plan, [{ heading: plan.headings[0], content: 'Useful content.' }], ['model']);
+    assert.equal((await loadGenerationCheckpoint(directory, row, 'format-a'))?.sections.length, 1);
+    assert.equal(await loadGenerationCheckpoint(directory, row, 'format-b'), undefined);
     await removeGenerationCheckpoint(directory, row.blog_id);
-    assert.equal(await loadGenerationCheckpoint(directory, row, 'template-a'), undefined);
+    assert.equal(await loadGenerationCheckpoint(directory, row, 'format-a'), undefined);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

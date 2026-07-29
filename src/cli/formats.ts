@@ -7,7 +7,7 @@ const settings = config();
 const registry = await ArticleFormatRegistry.load(settings.formatsDir);
 if (command === 'validate') {
   process.stdout.write(`${JSON.stringify({
-    formats: registry.list().map(format => ({ id: format.id, target_words: format.target_words, section_count: format.sections.length, template: format.template_path }))
+    formats: registry.list().map(format => ({ id: format.id, target_words: format.target_words, section_count: format.sections.length, definition: format.definition_path }))
   }, null, 2)}\n`);
 } else if (command === 'sync') {
   const count = await syncBlogFormatDropdown(settings.trackerPath, registry);

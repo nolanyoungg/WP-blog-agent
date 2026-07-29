@@ -78,7 +78,7 @@ export const validateStructuredArticle = (format: ArticleFormat, article: Struct
   requireText(article.slug, 'Article slug');
   if (!Array.isArray(article.categories) || article.categories.length < 1 || article.categories.length > 5 || article.categories.some(value => typeof value !== 'string' || !value.trim())) throw new Error('Article categories must contain 1-5 non-empty values');
   if (!Array.isArray(article.tags) || article.tags.length < 1 || article.tags.length > 10 || article.tags.some(value => typeof value !== 'string' || !value.trim())) throw new Error('Article tags must contain 1-10 non-empty values');
-  if (!Array.isArray(article.sections) || article.sections.length !== format.sections.length) throw new Error(`Format ${format.id} requires exactly ${format.sections.length} template sections; received ${article.sections?.length ?? 0}`);
+  if (!Array.isArray(article.sections) || article.sections.length !== format.sections.length) throw new Error(`Format ${format.id} requires exactly ${format.sections.length} sections; received ${article.sections?.length ?? 0}`);
   article.sections.forEach(validateStructuredSection);
 };
 
@@ -90,7 +90,7 @@ export const renderAndValidateArticle = (format: ArticleFormat, article: Structu
   });
   const body = sections.join('\n\n');
   const headings = body.match(/^#\s+\S.+$/gm) ?? [];
-  if (headings.length !== format.sections.length) throw new Error(`Rendered format ${format.id} must preserve its ${format.sections.length} template sections`);
+  if (headings.length !== format.sections.length) throw new Error(`Rendered format ${format.id} must preserve its ${format.sections.length} sections`);
   const front = `title: ${yamlString(article.title)}\nexcerpt: ${yamlString(article.excerpt)}\nslug: ${yamlString(slugify(article.slug))}\ncategories:\n${article.categories.map(value => `  - ${yamlString(value)}`).join('\n')}\ntags:\n${article.tags.map(value => `  - ${yamlString(value)}`).join('\n')}`;
   return `---\n${front}\n---\n\n${body}\n`;
 };

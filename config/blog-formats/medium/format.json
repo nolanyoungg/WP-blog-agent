@@ -3,5 +3,46 @@
   "display_name": "Medium — 6-Section Article",
   "description": "A balanced article with six sections, enough depth for explanation and implementation guidance.",
   "target_words": 1100,
-  "writing_guidance": "Develop the topic in a logical sequence, vary the section rhythm, and keep every section useful to the reader's decision or task."
+  "writing_guidance": "Develop the topic in a logical sequence, vary the section rhythm, and keep every section useful to the reader's decision or task.",
+  "tone": "Professional, approachable, explanatory, and action oriented.",
+  "expertise_level": "Written for an informed beginner or intermediate business reader without assuming specialist knowledge.",
+  "conclusion_guidance": "Connect the major ideas and give the reader a confident, realistic next action.",
+  "avoid": [
+    "repeating the same advice across sections",
+    "filler used only to extend length",
+    "invented guarantees, benchmarks, or performance targets",
+    "technical detail that does not help the reader act"
+  ],
+  "sections": [
+    {
+      "key": "introduction",
+      "heading_example": "Specific, Useful Article Title",
+      "content_instruction": "Introduce the reader's situation and explain the practical outcome of reading the article."
+    },
+    {
+      "key": "foundations",
+      "heading_example": "Establish the Important Foundations",
+      "content_instruction": "Define the subject, supply the necessary context, and explain why it matters."
+    },
+    {
+      "key": "considerations",
+      "heading_example": "Evaluate the Key Considerations",
+      "content_instruction": "Develop the major requirements, tradeoffs, or decision factors in useful detail."
+    },
+    {
+      "key": "approach",
+      "heading_example": "Follow a Practical Approach",
+      "content_instruction": "Present a clear method, framework, sequence, or set of recommendations."
+    },
+    {
+      "key": "mistakes_and_progress",
+      "heading_example": "Avoid Mistakes and Measure Progress",
+      "content_instruction": "Explain common failure points, quality checks, and meaningful signs of progress."
+    },
+    {
+      "key": "next_step",
+      "heading_example": "Move Forward With Confidence",
+      "content_instruction": "Bring the guidance together and finish with a relevant next action."
+    }
+  ]
 }
