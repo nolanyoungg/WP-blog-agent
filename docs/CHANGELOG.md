@@ -4,6 +4,7 @@
 
 ### Added
 
+- 125 SEO-focused Shibey content topics across website development, app development, custom software, technical SEO, and analytics, extending the tracker through Blog #176.
 - Extensible blog formats under `config/blog-formats/`. Each format owns an approximate `target_words` value and an `example.md` structural template.
 - Tracker-scoped, atomic generation checkpoints that resume a plan and completed sections only when the tracker row and template contents still match.
 - Formatted PDF review artifacts alongside the authoritative Markdown drafts.
@@ -21,6 +22,7 @@
 
 ### Fixed
 
+- Successful iMessage posting confirmations now show the result, blog ID, and title as three separate blocks.
 - Removed the conflicting combination of an independent tracker word count and a `short`/`medium`/`long` format choice.
 - Prevented acceptable articles from failing because a section or paragraph was a few words outside a calculated range.
 - Bound checkpoints to the selected template contents so format changes cannot resume stale generated sections.
