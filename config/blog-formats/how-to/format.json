@@ -1,0 +1,63 @@
+{
+  "id": "how-to",
+  "display_name": "How-To — Step-by-Step Guide",
+  "description": "A sequential guide that helps a reader complete a specific task from preparation through verification.",
+  "target_words": 1400,
+  "writing_guidance": "Organize the article around completing the task. Keep the sequence easy to follow and explain the purpose of important actions.",
+  "tone": "Direct, encouraging, practical, and precise.",
+  "expertise_level": "Assume a motivated beginner and explain unfamiliar decisions without talking down to the reader.",
+  "conclusion_guidance": "Confirm what the reader has accomplished and identify the most useful follow-up action.",
+  "avoid": [
+    "steps that are vague or out of order",
+    "unexplained jargon",
+    "invented guarantees, benchmarks, or performance targets",
+    "background that does not help complete the task"
+  ],
+  "sections": [
+    {
+      "key": "introduction",
+      "heading_example": "How to Accomplish the Goal",
+      "content_instruction": "State the task, the result the reader will achieve, and who the guide is for."
+    },
+    {
+      "key": "prerequisites",
+      "heading_example": "What You Need Before You Start",
+      "content_instruction": "Explain the tools, access, information, or decisions the reader should have ready."
+    },
+    {
+      "key": "preparation",
+      "heading_example": "Prepare for the Work",
+      "content_instruction": "Describe the setup and preliminary checks that make the task smoother and safer."
+    },
+    {
+      "key": "first_steps",
+      "heading_example": "Start With the First Essential Steps",
+      "content_instruction": "Walk through the opening actions in a clear sequence and explain why they matter."
+    },
+    {
+      "key": "core_steps",
+      "heading_example": "Complete the Core Work",
+      "content_instruction": "Guide the reader through the main actions required to achieve the result."
+    },
+    {
+      "key": "finish_steps",
+      "heading_example": "Finish and Refine the Result",
+      "content_instruction": "Explain the remaining actions and useful refinements that complete the task."
+    },
+    {
+      "key": "verification",
+      "heading_example": "Check That Everything Works",
+      "content_instruction": "Show the reader how to verify the result and recognize a successful outcome."
+    },
+    {
+      "key": "troubleshooting",
+      "heading_example": "Solve Common Problems",
+      "content_instruction": "Address likely mistakes or obstacles and give practical ways to recover."
+    },
+    {
+      "key": "next_step",
+      "heading_example": "Build on What You Completed",
+      "content_instruction": "Reinforce the completed outcome and suggest a useful next action."
+    }
+  ]
+}

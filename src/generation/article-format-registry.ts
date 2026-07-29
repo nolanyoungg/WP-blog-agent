@@ -14,11 +14,13 @@ export interface ArticleFormat {
   description: string;
   target_words: number;
   writing_guidance: string;
+  tone: string;
+  expertise_level: string;
+  conclusion_guidance: string;
+  avoid: string[];
   sections: ArticleFormatSection[];
-  template_markdown: string;
-  template_hash: string;
+  format_hash: string;
   definition_path: string;
-  template_path: string;
 }
 
 const object = (value: unknown, label: string): Record<string, unknown> => {
@@ -36,44 +38,51 @@ const positiveInteger = (value: unknown, label: string) => {
   return Number(value);
 };
 
-const parseTemplateSections = (markdown: string, formatId: string): ArticleFormatSection[] => {
-  const headings = [...markdown.matchAll(/^#\s+(.+)$/gm)];
-  if (!headings.length) throw new Error(`Format ${formatId} template must contain at least one H1 section`);
-  return headings.map((match, index) => {
-    const start = (match.index ?? 0) + match[0].length;
-    const end = headings[index + 1]?.index ?? markdown.length;
-    const instruction = markdown.slice(start, end).trim();
-    if (!instruction) throw new Error(`Format ${formatId} template section ${index + 1} must contain a writing instruction`);
+const stringArray = (value: unknown, label: string) => {
+  if (!Array.isArray(value) || !value.length) throw new Error(`${label} must be a non-empty array`);
+  return value.map((item, index) => string(item, `${label} item ${index + 1}`));
+};
+
+const parseSections = (value: unknown, formatId: string): ArticleFormatSection[] => {
+  if (!Array.isArray(value) || !value.length) throw new Error(`Format ${formatId} sections must be a non-empty array`);
+  const sections = value.map((item, index) => {
+    const section = object(item, `Format ${formatId} section ${index + 1}`);
+    const key = string(section.key, `Format ${formatId} section ${index + 1} key`);
+    if (!/^[a-z0-9][a-z0-9_]*$/.test(key)) throw new Error(`Format ${formatId} section key ${key} must use lowercase letters, numbers, or underscores`);
     return {
-      key: `section_${index + 1}`,
-      heading_example: match[1].trim(),
-      content_instruction: instruction
+      key,
+      heading_example: string(section.heading_example, `Format ${formatId} section ${index + 1} heading_example`),
+      content_instruction: string(section.content_instruction, `Format ${formatId} section ${index + 1} content_instruction`)
     };
   });
+  const duplicate = sections.find((section, index) => sections.findIndex(candidate => candidate.key === section.key) !== index);
+  if (duplicate) throw new Error(`Format ${formatId} has duplicate section key: ${duplicate.key}`);
+  return sections;
 };
 
 const parseFormat = async (directory: string): Promise<ArticleFormat> => {
   const definitionPath = path.join(directory, 'format.json');
-  const templatePath = path.join(directory, 'example.md');
   let raw: Record<string, unknown>;
-  let templateMarkdown: string;
   try { raw = object(JSON.parse(await readFile(definitionPath, 'utf8')), definitionPath); }
   catch (error) { throw new Error(`Could not load ${definitionPath}: ${String(error)}`); }
-  try { templateMarkdown = (await readFile(templatePath, 'utf8')).trim(); }
-  catch (error) { throw new Error(`Could not load ${templatePath}: ${String(error)}`); }
   const id = string(raw.id, `${definitionPath} id`);
   if (!/^[a-z0-9][a-z0-9_-]*$/.test(id)) throw new Error(`Format id ${id} must use lowercase letters, numbers, hyphens, or underscores`);
-  return {
+  const definition = {
     id,
     display_name: string(raw.display_name, `${definitionPath} display_name`),
     description: string(raw.description, `${definitionPath} description`),
     target_words: positiveInteger(raw.target_words, `${definitionPath} target_words`),
     writing_guidance: string(raw.writing_guidance, `${definitionPath} writing_guidance`),
-    sections: parseTemplateSections(templateMarkdown, id),
-    template_markdown: templateMarkdown,
-    template_hash: createHash('sha256').update(templateMarkdown).digest('hex'),
-    definition_path: definitionPath,
-    template_path: templatePath
+    tone: string(raw.tone, `${definitionPath} tone`),
+    expertise_level: string(raw.expertise_level, `${definitionPath} expertise_level`),
+    conclusion_guidance: string(raw.conclusion_guidance, `${definitionPath} conclusion_guidance`),
+    avoid: stringArray(raw.avoid, `${definitionPath} avoid`),
+    sections: parseSections(raw.sections, id)
+  };
+  return {
+    ...definition,
+    format_hash: createHash('sha256').update(JSON.stringify(definition)).digest('hex'),
+    definition_path: definitionPath
   };
 };
 

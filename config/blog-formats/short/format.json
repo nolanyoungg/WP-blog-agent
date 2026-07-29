@@ -3,5 +3,36 @@
   "display_name": "Short — 4-Section Article",
   "description": "A focused article with four substantial sections and a direct conclusion.",
   "target_words": 900,
-  "writing_guidance": "Move quickly from context to useful guidance. Avoid repetition, filler, and unnecessary background."
+  "writing_guidance": "Move quickly from context to useful guidance. Give the reader a complete answer without stretching the subject.",
+  "tone": "Clear, confident, useful, and conversational.",
+  "expertise_level": "Accessible to a general business reader while still offering practical substance.",
+  "conclusion_guidance": "Reinforce the central takeaway and end with one relevant next step.",
+  "avoid": [
+    "repetition and filler",
+    "unnecessary background",
+    "invented guarantees, benchmarks, or performance targets",
+    "unrelated tangents"
+  ],
+  "sections": [
+    {
+      "key": "introduction",
+      "heading_example": "Clear Article Title",
+      "content_instruction": "Introduce the reader's problem and explain what the article will help them understand."
+    },
+    {
+      "key": "central_idea",
+      "heading_example": "Explain the Central Idea",
+      "content_instruction": "Develop the most important context, definitions, and decision factors."
+    },
+    {
+      "key": "practical_action",
+      "heading_example": "Turn the Idea Into Action",
+      "content_instruction": "Give practical steps, examples, recommendations, or a concise checklist the reader can use."
+    },
+    {
+      "key": "next_step",
+      "heading_example": "Choose the Right Next Step",
+      "content_instruction": "Bring the main guidance together and close with a useful action."
+    }
+  ]
 }

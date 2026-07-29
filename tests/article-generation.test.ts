@@ -7,15 +7,19 @@ import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePl
 import { ArticleFormatRegistry } from '../src/generation/article-format-registry.js';
 import { parseDraft, renderAndValidateArticle, saveDraft, type StructuredArticle } from '../src/generation/article-markdown-renderer.js';
 
-test('generation uses the selected Markdown template and its format-owned target as guidance', async () => {
+test('generation uses the selected JSON format and its editorial fields only as guidance', async () => {
   const format = (await ArticleFormatRegistry.load(path.resolve('config/blog-formats'))).get('short');
   const row = { blog_topic: 'WordPress performance', blog_type: 'short' };
   const planPrompt = promptForArticlePlan(row, format);
   assert.match(planPrompt, /Approximate article length: 900 words/);
-  assert.match(planPrompt, /# Explain the Central Idea/);
+  assert.match(planPrompt, /Explain the Central Idea/);
+  assert.match(planPrompt, /Tone: Clear, confident, useful, and conversational/);
+  assert.match(planPrompt, /Reader expertise level:/);
+  assert.match(planPrompt, /Conclusion guidance:/);
+  assert.match(planPrompt, /invented guarantees, benchmarks, or performance targets/);
   assert.match(planPrompt, /writing guidance, not an exact quota/i);
   const schema = articlePlanResponseSchema(format) as any;
-  assert.deepEqual(schema.properties.sections.required, ['section_1', 'section_2', 'section_3', 'section_4']);
+  assert.deepEqual(schema.properties.sections.required, ['introduction', 'central_idea', 'practical_action', 'next_step']);
   const plan = {
     title: 'Reliable WordPress Performance',
     excerpt: 'A practical explanation of dependable WordPress performance work.',
@@ -30,7 +34,7 @@ test('generation uses the selected Markdown template and its format-owned target
   assert.deepEqual(parseArticleSection('{"content":"A paragraph.\\n\\n- A useful item"}'), { content: 'A paragraph.\n\n- A useful item' });
 });
 
-test('final Markdown preserves the template section count without policing words or paragraphs', async () => {
+test('final Markdown preserves the format section count without policing editorial guidance, words, or paragraphs', async () => {
   const format = (await ArticleFormatRegistry.load(path.resolve('config/blog-formats'))).get('short');
   const article: StructuredArticle = {
     title: 'Reliable WordPress Performance',
@@ -42,7 +46,7 @@ test('final Markdown preserves the template section count without policing words
       { heading: 'Reliable WordPress Performance', content: 'A brief opening.' },
       { heading: 'Understand Performance', content: 'This section is intentionally concise.\n\nA second natural paragraph.' },
       { heading: 'Improve the Site', content: '- Measure first\n- Change one thing\n- Review the result' },
-      { heading: 'Choose the Next Step', content: '# Injected heading\n\nChoose the Next Step\n\nFinish with the most useful next action.' }
+      { heading: 'Choose the Next Step', content: '# Injected heading\n\nChoose the Next Step\n\nA deliberately abrupt ending that ignores the conclusion guidance.' }
     ]
   };
   const markdown = renderAndValidateArticle(format, article);

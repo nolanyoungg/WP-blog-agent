@@ -1,0 +1,58 @@
+{
+  "id": "practical-guidance",
+  "display_name": "Practical Guidance — Decision and Advice",
+  "description": "An advice-focused article that helps readers understand a situation, weigh options, and choose a sensible course of action.",
+  "target_words": 1100,
+  "writing_guidance": "Help the reader make a sound decision. Explain principles and options, then translate them into recommendations that fit real situations.",
+  "tone": "Thoughtful, reassuring, candid, and practical.",
+  "expertise_level": "Accessible to business owners and general readers who want informed guidance without specialist language.",
+  "conclusion_guidance": "Clarify the most important decision and end with a realistic next step rather than a generic summary.",
+  "avoid": [
+    "one-size-fits-all claims",
+    "fear-based or overly absolute advice",
+    "invented guarantees, benchmarks, or performance targets",
+    "recommendations without explaining the reasoning"
+  ],
+  "sections": [
+    {
+      "key": "introduction",
+      "heading_example": "Practical Guidance for a Better Decision",
+      "content_instruction": "Frame the reader's situation and explain the decision or improvement the article will support."
+    },
+    {
+      "key": "situation",
+      "heading_example": "Understand the Situation",
+      "content_instruction": "Describe the context, pressures, or goals that shape the reader's choices."
+    },
+    {
+      "key": "principles",
+      "heading_example": "Focus on the Principles That Matter",
+      "content_instruction": "Explain the core ideas the reader should use to evaluate the issue."
+    },
+    {
+      "key": "options",
+      "heading_example": "Consider the Available Options",
+      "content_instruction": "Present realistic approaches and discuss where each may fit."
+    },
+    {
+      "key": "recommendations",
+      "heading_example": "Choose a Practical Approach",
+      "content_instruction": "Offer specific recommendations and connect each one to the reader's goals or constraints."
+    },
+    {
+      "key": "examples",
+      "heading_example": "See How the Guidance Applies",
+      "content_instruction": "Use relevant scenarios or examples to make the recommendations easier to apply."
+    },
+    {
+      "key": "mistakes",
+      "heading_example": "Avoid Common Missteps",
+      "content_instruction": "Explain predictable mistakes, weak assumptions, and ways to make a better choice."
+    },
+    {
+      "key": "next_step",
+      "heading_example": "Decide on the Next Step",
+      "content_instruction": "Bring the advice together and help the reader choose a realistic action."
+    }
+  ]
+}

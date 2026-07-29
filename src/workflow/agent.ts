@@ -118,7 +118,7 @@ export class BlogWorkflow {
       await this.log.write('workflow.generation_started', { blog_id: row.blog_id });
       const format = formats.get(row.blog_type);
       let checkpoint;
-      try { checkpoint = await loadGenerationCheckpoint(this.checkpointDirectory, row, format.template_hash); }
+      try { checkpoint = await loadGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash); }
       catch (error) {
         await this.log.write('workflow.generation_checkpoint_invalid', { blog_id: row.blog_id, error: String(error) });
         await removeGenerationCheckpoint(this.checkpointDirectory, row.blog_id);
@@ -148,7 +148,7 @@ export class BlogWorkflow {
         const generatedPlan = await this.lm.generateStructured(promptForArticlePlan(row, format), articlePlanResponseSchema(format), text => parseArticlePlan(text, format));
         planValue = generatedPlan.value;
         models.add(generatedPlan.model);
-        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.template_hash, planValue, sections, models);
+        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, planValue, sections, models);
         await this.log.write('workflow.generation_checkpoint_saved', { blog_id: row.blog_id, completed_sections: 0, checkpoint: checkpointPath });
       }
       if (!planValue) throw new Error(`Generation plan for Blog #${row.blog_id} was not available`);
@@ -166,7 +166,7 @@ export class BlogWorkflow {
         );
         models.add(generated.model);
         sections.push(generated.value);
-        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.template_hash, planValue, sections, models);
+        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, planValue, sections, models);
         await this.log.write('workflow.generation_checkpoint_saved', { blog_id: row.blog_id, completed_sections: sections.length, checkpoint: checkpointPath });
         await this.log.write('workflow.section_generation_succeeded', { blog_id: row.blog_id, section: definition.key, section_index: index + 1, model: generated.model });
       }
