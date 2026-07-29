@@ -98,7 +98,7 @@ export class BlogWorkflow {
       throw error;
     }
     try {
-      await this.notify(`Draft Posted! - #${blogId} - ${row.blog_topic}`);
+      await this.notify(`Draft Posted!\n\n#${blogId}\n\n${row.blog_topic}`);
     } catch (error) {
       await this.log.write('imessage.notification_failed', { blog_id: blogId, notification: 'posting_success', error: String(error) });
     }

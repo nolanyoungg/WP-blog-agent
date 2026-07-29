@@ -22,7 +22,7 @@
 
 ### Fixed
 
-- Successful iMessage posting confirmations now identify the posted blog by ID and title.
+- Successful iMessage posting confirmations now show the result, blog ID, and title as three separate blocks.
 - Removed the conflicting combination of an independent tracker word count and a `short`/`medium`/`long` format choice.
 - Prevented acceptable articles from failing because a section or paragraph was a few words outside a calculated range.
 - Bound checkpoints to the selected template contents so format changes cannot resume stale generated sections.
