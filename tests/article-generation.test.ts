@@ -18,6 +18,8 @@ test('generation uses the selected JSON format and its editorial fields only as 
   assert.match(planPrompt, /Conclusion guidance:/);
   assert.match(planPrompt, /invented guarantees, benchmarks, or performance targets/);
   assert.match(planPrompt, /writing guidance, not an exact quota/i);
+  assert.match(planPrompt, /Plan a distinct, non-overlapping scope for every section/);
+  assert.match(planPrompt, /heading must signal synthesis or a next step, not another body topic/);
   const schema = articlePlanResponseSchema(format) as any;
   assert.deepEqual(schema.properties.sections.required, ['introduction', 'central_idea', 'practical_action', 'next_step']);
   const plan = {
@@ -28,8 +30,17 @@ test('generation uses the selected JSON format and its editorial fields only as 
     tags: ['performance'],
     headings: ['Reliable WordPress Performance', 'Understand Performance', 'Improve the Site', 'Choose the Next Step']
   };
-  assert.match(promptForArticleSection(row, format, plan, 1), /Aim for roughly 225 words in this section/);
-  assert.match(promptForArticleSection(row, format, plan, 1), /guidance, not a pass\/fail quota/);
+  const sectionPrompt = promptForArticleSection(row, format, plan, 1);
+  assert.match(sectionPrompt, /Aim for roughly 225 words in this section/);
+  assert.match(sectionPrompt, /guidance, not a pass\/fail quota/);
+  assert.match(sectionPrompt, /Rendered heading: Improve the Site\s+Format purpose: Give practical steps, examples, recommendations/);
+  assert.match(sectionPrompt, /This call owns only the current section/);
+  assert.match(sectionPrompt, /Do not include the article title, the rendered section heading, another section heading/);
+  assert.match(sectionPrompt, /do not manufacture numeric thresholds or universal success figures/);
+  assert.match(sectionPrompt, /evaluate against their own baseline/);
+  assert.doesNotMatch(sectionPrompt, /This is the final section/);
+  assert.match(promptForArticleSection(row, format, plan, 3), /This is the final section\. Synthesize the article and give one useful next action/);
+  assert.match(promptForArticleSection(row, format, plan, 3), /Do not introduce another detailed checklist, procedure, or new body topic/);
   assert.deepEqual(articleSectionResponseSchema.required, ['content']);
   assert.deepEqual(parseArticleSection('{"content":"A paragraph.\\n\\n- A useful item"}'), { content: 'A paragraph.\n\n- A useful item' });
 });

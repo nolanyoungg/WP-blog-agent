@@ -4,6 +4,9 @@
 
 ### Added
 
+- Focused PDF layout coverage for measured table rows, full-width text after tables, and wrapped list items near page footers.
+- WordPress HTML regression coverage for duplicate-title removal and `<h2>` article sections.
+- Posting-notification coverage for the URL returned by WordPress.
 - JSON-only `how-to` and `practical-guidance` formats alongside `short`, `medium`, and `long`.
 - `tone`, `expertise_level`, `conclusion_guidance`, `avoid`, and ordered section definitions inside every `format.json`.
 - 125 SEO-focused Shibey content topics across website development, app development, custom software, technical SEO, and analytics, extending the tracker through Blog #176.
@@ -15,6 +18,10 @@
 
 ### Changed
 
+- Section-generation prompts now identify the current section's exclusive scope, pair the complete rendered heading set with format purposes, and tell LM Studio not to repeat the article title or section labels. Approximate word counts and editorial fields remain guidance only.
+- WordPress posting now removes a matching first body title and demotes remaining top-level Markdown headings to `<h2>` only in the generated HTML. Authoritative Markdown and review PDFs retain their original structure.
+- PDF tables and wrapped list items now use measured heights before page breaks and restore the normal page cursor after rendering.
+- Successful posting notifications now include the generated draft title and the URL returned by WordPress.
 - `blog_type` is now the only article-size and structure choice. All five bundled formats get their approximate targets, editorial context, and section structures from `format.json`.
 - Generation follows the ordered JSON sections and passes the editorial fields to LM Studio as prompt guidance. The model returns ordinary Markdown for each section, so natural paragraphs, lists, quotes, tables, and code are allowed.
 - Article length is prompt guidance rather than a deterministic acceptance range. Each section receives a rough share to establish scale, but sections are no longer rejected for missing that share or forced into exact paragraph shapes.
@@ -24,7 +31,10 @@
 
 ### Fixed
 
-- Successful iMessage posting confirmations now show the result, blog ID, and title as three separate blocks.
+- Prevented table cells from leaving the PDF cursor at the final cell width, which narrowed or misplaced following text.
+- Prevented variable-height table rows and wrapped list items from crossing the review PDF footer.
+- Prevented a duplicate article title and top-level `<h1>` section headings in posted WordPress content.
+- Restored the WordPress URL to successful iMessage posting confirmations.
 - Removed the conflicting combination of an independent tracker word count and a `short`/`medium`/`long` format choice.
 - Prevented acceptable articles from failing because a section or paragraph was a few words outside a calculated range.
 - Bound checkpoints to the complete selected JSON format so guidance or structure changes cannot resume stale generated sections.
@@ -44,7 +54,9 @@
 
 ### Tested
 
-- `npm run build`, all 24 deterministic plumbing tests, `npm run formats:validate`, `npm run formats:sync`, and `git diff --check`.
+- `npm run build`, `npm run lint`, all 31 deterministic tests, `npm run formats:validate`, and `git diff --check`.
+- A real production Blog #59 run used the configured, already-loaded `openai/gpt-oss-20b`. Its run log records health checks, first-attempt completion of the plan and all 10 sections, checkpoint removal, Markdown and PDF creation, successful iMessage delivery, and the final `awaiting_review` state.
+- Corrected local Blog #55 was checked against current primary Squarespace and WordPress documentation, regenerated without changing WordPress post `28357`, and visually inspected across all six PDF pages. Tables, wrapped list items, section transitions, margins, and footers render cleanly.
 - The production workbook was re-imported and visually rendered with all 177 existing rows preserved, 12 columns, no formulas, and an inline `blog_type` dropdown containing all five discovered format IDs.
 - Five isolated real-LM-Studio dry-runs used only the already-loaded `openai/gpt-oss-20b`: `short` produced 4 sections and 787 content words, `medium` 6 sections and 1,089 words, `long` 10 sections and 1,704 words, `how-to` 9 sections and 1,497 words, and `practical-guidance` 8 sections and 1,193 words. Every draft reached `awaiting_review` without editorial or word-count rejection, removed its checkpoint, and created a visually verified PDF.
 - A real isolated Blog #18 dry-run used only the already-loaded `openai/gpt-oss-20b`, completed the plan and all 10 sections on their first attempts, produced 1,832 content words from the format's approximate 1,500-word target, removed its checkpoint, created Markdown and a six-page PDF, and moved only the copied tracker to `awaiting_review`.

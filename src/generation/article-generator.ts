@@ -59,6 +59,8 @@ Conclusion guidance: ${format.conclusion_guidance}
 Avoid:
 ${avoid}
 
+Plan a distinct, non-overlapping scope for every section. Keep each heading inside its stated purpose, and do not assign the same subtopic, example, or action to multiple sections. Use the conclusion guidance when planning the final section: its heading must signal synthesis or a next step, not another body topic, checklist, or procedure.
+
 Return only the JSON object required by the response schema. The sections field must contain exactly these keys in order: ${format.sections.map(section => section.key).join(', ')}. Each section value contains only its topic-specific heading. Do not write body content yet.
 
 Format sections, in required order:
@@ -75,9 +77,13 @@ export const promptForArticleSection = (
   if (!section) throw new Error(`Format ${format.id} has no section ${index + 1}`);
   const approximateSectionWords = Math.round(format.target_words / format.sections.length);
   const sections = format.sections.map((item, sectionIndex) =>
-    `${sectionIndex + 1}. ${item.heading_example}: ${item.content_instruction}`
+    `${sectionIndex + 1}. Rendered heading: ${plan.headings[sectionIndex]}
+   Format purpose: ${item.content_instruction}${sectionIndex === index ? '\n   This is the current section.' : ''}`
   ).join('\n');
   const avoid = format.avoid.map(item => `- ${item}`).join('\n');
+  const finalSectionBoundary = index === format.sections.length - 1
+    ? '\nThis is the final section. Synthesize the article and give one useful next action. Do not introduce another detailed checklist, procedure, or new body topic, and do not repeat the steps already covered.'
+    : '';
   return `Write only the body content for section ${index + 1} of ${format.sections.length} in the WordPress article "${plan.title}" about: ${row.blog_topic}
 
 Selected format: ${format.display_name}
@@ -90,6 +96,8 @@ Conclusion guidance: ${format.conclusion_guidance}
 Avoid:
 ${avoid}
 
+Use the Avoid list as writing guidance for this section. When it prohibits invented guarantees, benchmarks, or performance targets, do not manufacture numeric thresholds or universal success figures. Describe what the reader should evaluate against their own baseline instead.
+
 Format heading example: ${section.heading_example}
 Rendered heading: ${plan.headings[index]}
 Section instruction: ${section.content_instruction}
@@ -97,7 +105,9 @@ Section instruction: ${section.content_instruction}
 The complete format structure, in required order, is:
 ${sections}
 
-Return only the JSON object required by the response schema. Put the finished section body in "content" as ordinary Markdown. Paragraphs, lists, quotes, tables, and code are allowed when they naturally fit the section instruction. Do not include the section heading in the content and do not add H1 headings. Avoid repeating material assigned to these other sections: ${plan.headings.filter((_, headingIndex) => headingIndex !== index).join(' | ')}.`;
+This call owns only the current section. Keep its content inside the current section's purpose. Do not preview, fill, or repeat material assigned to another section.${finalSectionBoundary}
+
+Return only the JSON object required by the response schema. Put the finished section body in "content" as ordinary Markdown. Paragraphs, lists, quotes, tables, and code are allowed when they naturally fit the section instruction. Do not include the article title, the rendered section heading, another section heading, or a label naming another section in the content. Do not add H1 headings.`;
 };
 
 const text = (value: unknown, label: string) => {

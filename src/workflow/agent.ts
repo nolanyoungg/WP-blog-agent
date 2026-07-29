@@ -8,7 +8,7 @@ import { ArticleFormatRegistry } from '../generation/article-format-registry.js'
 import { parseDraft, renderAndValidateArticle, saveDraft, validateStructuredSection, type StructuredSection } from '../generation/article-markdown-renderer.js';
 import { loadGenerationCheckpoint, removeGenerationCheckpoint, saveGenerationCheckpoint } from '../generation/generation-checkpoint.js';
 import { LMStudioClient } from '../lmstudio/client.js';
-import { parseReview } from '../messaging/imessage.js';
+import { parseReview, postedNotification } from '../messaging/imessage.js';
 import { createReviewPdf } from '../review/pdf.js';
 import { RunLog } from '../log.js';
 import { ExcelTracker } from '../tracker/excel-tracker.js';
@@ -82,10 +82,15 @@ export class BlogWorkflow {
       await this.notify(`Blog #${blogId} could not be posted: the draft file is missing.`);
       return;
     }
+    let postedTitle = row.blog_topic;
+    let postedUrl = '';
     try {
       await this.tracker.update(blogId, { blog_status: 'posting' });
       if (this.dryRun) { await this.log.write('wordpress.skipped_dry_run', { blog_id: blogId }); return; }
-      const post = await new WordPressClient(requireWordPress(this.settings)).post(await parseDraft(row.markdown_path));
+      const draft = await parseDraft(row.markdown_path);
+      const post = await new WordPressClient(requireWordPress(this.settings)).post(draft);
+      postedTitle = draft.title;
+      postedUrl = post.link;
       await this.tracker.update(blogId, { blog_status: 'posted', blog_posted_date: new Date().toISOString(), wordpress_post_id: String(post.id), wordpress_url: post.link });
       await this.log.write('wordpress.posted', { blog_id: blogId, wordpress_post_id: post.id, wordpress_url: post.link });
     } catch (error) {
@@ -98,7 +103,7 @@ export class BlogWorkflow {
       throw error;
     }
     try {
-      await this.notify(`Draft Posted!\n\n#${blogId}\n\n${row.blog_topic}`);
+      await this.notify(postedNotification(blogId, postedTitle, postedUrl));
     } catch (error) {
       await this.log.write('imessage.notification_failed', { blog_id: blogId, notification: 'posting_success', error: String(error) });
     }
