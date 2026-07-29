@@ -6,10 +6,10 @@ test('retries generation errors before pending rows and never regenerates postin
   try {
     const book = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet([
-      ['blog_id', 'blog_topic', 'blog_length', 'blog_type', 'blog_status', 'blog_created_date', 'blog_posted_date', 'markdown_path'],
-      ['2', 'Local-first WordPress', 500, 'short', 'pending', '', '', ''],
-      ['3', 'Retry generation', 1500, 'long', 'error', '', '', ''],
-      ['4', 'Posting failed', 500, 'short', 'error', '', '', 'data/drafts/4.md']
+      ['blog_id', 'blog_topic', 'blog_type', 'blog_status', 'blog_created_date', 'blog_posted_date', 'markdown_path'],
+      ['2', 'Local-first WordPress', 'short', 'pending', '', '', ''],
+      ['3', 'Retry generation', 'long', 'error', '', '', ''],
+      ['4', 'Posting failed', 'short', 'error', '', '', 'data/drafts/4.md']
     ]);
     XLSX.utils.book_append_sheet(book, sheet, 'Blog tracker');
     XLSX.writeFile(book, file);
@@ -20,7 +20,6 @@ test('retries generation errors before pending rows and never regenerates postin
     await tracker.update('3', { blog_status: 'error', markdown_path: 'data/drafts/3.md' });
     const pending = await tracker.claimNext(formats);
     assert.equal(pending?.blog_id, '2');
-    assert.equal(pending?.blog_length, 500);
     assert.equal(pending?.blog_type, 'short');
     await tracker.update('2', { markdown_path: 'data/drafts/2.md', blog_status: 'awaiting_review' });
     assert.equal(await tracker.claimNext(formats), undefined);

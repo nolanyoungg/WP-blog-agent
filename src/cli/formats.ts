@@ -1,17 +1,13 @@
 import { config } from '../config/index.js';
 import { ArticleFormatRegistry } from '../generation/article-format-registry.js';
-import { EditorialGuidanceRegistry } from '../generation/editorial-guidance.js';
 import { syncBlogFormatDropdown } from '../tracker/blog-format-dropdown.js';
 
 const command = process.argv[2] ?? 'validate';
 const settings = config();
 const registry = await ArticleFormatRegistry.load(settings.formatsDir);
-const editorialGuidance = await EditorialGuidanceRegistry.load(settings.editorialGuidancePath);
 if (command === 'validate') {
-  const genericGuidance = editorialGuidance.forTopic('');
   process.stdout.write(`${JSON.stringify({
-    formats: registry.list().map(format => ({ id: format.id, h1_count: format.sections.length, example: format.example_path })),
-    editorial_guidance: { file: settings.editorialGuidancePath, universal_constraints: genericGuidance.prompt.split('\n').filter(line => line.startsWith('- ')).length }
+    formats: registry.list().map(format => ({ id: format.id, target_words: format.target_words, section_count: format.sections.length, template: format.template_path }))
   }, null, 2)}\n`);
 } else if (command === 'sync') {
   const count = await syncBlogFormatDropdown(settings.trackerPath, registry);

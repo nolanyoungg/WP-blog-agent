@@ -1,60 +1,7 @@
 {
   "id": "short",
   "display_name": "Short — 4-Section Article",
-  "description": "A focused article with four substantial H1 sections and a direct conclusion.",
-  "writing_guidance": "Move quickly from context to useful guidance. Avoid repetition, filler, and unnecessary background.",
-  "sections": [
-    {
-      "key": "introduction",
-      "purpose": "Introduce the topic, reader problem, and practical promise of the article.",
-      "heading_instruction": "Use the article title as the first heading.",
-      "content_instruction": "Orient the reader and explain what they will learn.",
-      "word_percentage": 25,
-      "min_paragraphs": 1,
-      "max_paragraphs": 3,
-      "min_words_per_paragraph": 45,
-      "max_words_per_paragraph": 250,
-      "allowed_blocks": ["paragraph"],
-      "required_blocks": []
-    },
-    {
-      "key": "core-explanation",
-      "purpose": "Explain the central idea and why it matters.",
-      "heading_instruction": "Write a descriptive heading specific to the topic.",
-      "content_instruction": "Give the reader clear context, definitions, and decision factors.",
-      "word_percentage": 30,
-      "min_paragraphs": 1,
-      "max_paragraphs": 4,
-      "min_words_per_paragraph": 45,
-      "max_words_per_paragraph": 250,
-      "allowed_blocks": ["paragraph", "ordered_list", "unordered_list", "quote", "table"],
-      "required_blocks": []
-    },
-    {
-      "key": "practical-guidance",
-      "purpose": "Turn the explanation into practical actions or recommendations.",
-      "heading_instruction": "Use an action-oriented heading.",
-      "content_instruction": "Provide useful steps, examples, considerations, or a compact checklist.",
-      "word_percentage": 30,
-      "min_paragraphs": 1,
-      "max_paragraphs": 4,
-      "min_words_per_paragraph": 45,
-      "max_words_per_paragraph": 250,
-      "allowed_blocks": ["paragraph", "ordered_list", "unordered_list", "quote", "table"],
-      "required_blocks": []
-    },
-    {
-      "key": "conclusion",
-      "purpose": "Summarize the takeaway and give the reader a sensible next step.",
-      "heading_instruction": "Use a conclusion heading tied to the topic rather than the word Conclusion alone.",
-      "content_instruction": "Close decisively without introducing an unrelated idea.",
-      "word_percentage": 15,
-      "min_paragraphs": 1,
-      "max_paragraphs": 2,
-      "min_words_per_paragraph": 45,
-      "max_words_per_paragraph": 250,
-      "allowed_blocks": ["paragraph"],
-      "required_blocks": []
-    }
-  ]
+  "description": "A focused article with four substantial sections and a direct conclusion.",
+  "target_words": 900,
+  "writing_guidance": "Move quickly from context to useful guidance. Avoid repetition, filler, and unnecessary background."
 }

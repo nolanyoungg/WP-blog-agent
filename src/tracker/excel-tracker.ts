@@ -5,12 +5,8 @@ import type { BlogRow, BlogStatus } from '../domain/blog.js';
 import { blogFormatDataValidationIds, ensureBlogFormatDataValidation } from './xlsx-data-validation.js';
 
 const sheetName = 'Blog tracker';
-const required = ['blog_id', 'blog_topic', 'blog_length', 'blog_type', 'blog_status', 'blog_created_date', 'blog_posted_date'];
+const required = ['blog_id', 'blog_topic', 'blog_type', 'blog_status', 'blog_created_date', 'blog_posted_date'];
 const blogFormatId = (value: unknown) => String(value ?? '').trim().toLowerCase() || undefined;
-const blogLength = (value: unknown) => {
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
-};
 
 export class ExcelTracker {
   constructor(readonly file: string) {}
@@ -47,7 +43,7 @@ export class ExcelTracker {
 
   async rows(): Promise<BlogRow[]> {
     const { rows } = this.read();
-    return rows.map((row, index) => ({ ...row, row: index + 2, blog_id: String(row.blog_id), blog_topic: String(row.blog_topic), blog_length: blogLength(row.blog_length), blog_type: blogFormatId(row.blog_type), blog_status: String(row.blog_status) as BlogStatus }));
+    return rows.map((row, index) => ({ ...row, row: index + 2, blog_id: String(row.blog_id), blog_topic: String(row.blog_topic), blog_type: blogFormatId(row.blog_type), blog_status: String(row.blog_status) as BlogStatus }));
   }
 
   async claimNext(validFormatIds?: ReadonlySet<string>): Promise<BlogRow | undefined> {
@@ -58,14 +54,12 @@ export class ExcelTracker {
       const index = retryableError >= 0 ? retryableError : pending;
       if (index < 0) return undefined;
       const selected = rows[index];
-      const length = blogLength(selected.blog_length);
       const formatId = blogFormatId(selected.blog_type);
-      if (!length) throw new Error(`blog_id ${String(selected.blog_id)} has an invalid blog_length`);
       if (!formatId || (validFormatIds && !validFormatIds.has(formatId))) throw new Error(`blog_id ${String(selected.blog_id)} has unknown blog_type "${formatId ?? ''}"${validFormatIds ? `. Available formats: ${[...validFormatIds].join(', ')}` : ''}`);
       const row = index + 2;
       this.setCells(sheet, row, { blog_status: 'generating', review_status: 'pending' });
       await this.atomic(book, validFormatIds);
-      return { ...selected, row, blog_id: String(selected.blog_id), blog_topic: String(selected.blog_topic), blog_length: length, blog_type: formatId, blog_status: 'generating' as BlogStatus };
+      return { ...selected, row, blog_id: String(selected.blog_id), blog_topic: String(selected.blog_topic), blog_type: formatId, blog_status: 'generating' as BlogStatus };
     });
   }
 
