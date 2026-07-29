@@ -98,7 +98,7 @@ export class BlogWorkflow {
       throw error;
     }
     try {
-      await this.notify(`Draft posted! ${(await this.tracker.rows()).find(candidate => candidate.blog_id === blogId)?.wordpress_url ?? ''}`);
+      await this.notify(`Draft Posted! - #${blogId} - ${row.blog_topic}`);
     } catch (error) {
       await this.log.write('imessage.notification_failed', { blog_id: blogId, notification: 'posting_success', error: String(error) });
     }
