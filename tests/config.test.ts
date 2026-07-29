@@ -21,3 +21,13 @@ test('expands the Messages attachment outbox and delivery settings', () => {
   assert.equal(settings.deliveryPollMs, 100);
   assert.equal(settings.relayTimeoutMs, 90_000);
 });
+
+test('resolves checkpoint configuration', () => {
+  const settings = config({ CHECKPOINTS_DIR: 'data/checkpoints' });
+  assert.equal(settings.checkpointsDir, path.resolve('data/checkpoints'));
+});
+
+test('fallback models are disabled unless explicitly enabled', () => {
+  assert.equal(config({ LMSTUDIO_ALLOW_FALLBACK_MODELS: 'false' }).lm.allowFallbackModels, false);
+  assert.equal(config({ LMSTUDIO_ALLOW_FALLBACK_MODELS: 'true' }).lm.allowFallbackModels, true);
+});

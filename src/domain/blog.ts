@@ -6,7 +6,6 @@ export interface BlogRow {
   row: number;
   blog_id: string;
   blog_topic: string;
-  blog_length?: number;
   blog_type?: BlogFormatId;
   blog_status: BlogStatus;
   blog_created_date?: string;

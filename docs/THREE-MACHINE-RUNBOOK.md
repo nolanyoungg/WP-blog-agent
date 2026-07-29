@@ -208,7 +208,7 @@ Set these values in the Windows .env. Replace every all-caps placeholder.
 LMSTUDIO_BASE_URL=http://WORK_MAC_TAILSCALE_IP:1234
 LMSTUDIO_API_TOKEN=LMSTUDIO_API_TOKEN_FROM_WORK_MAC
 LMSTUDIO_PRIMARY_MODEL=openai/gpt-oss-20b
-LMSTUDIO_ALLOW_FALLBACK_LOAD=false
+LMSTUDIO_ALLOW_FALLBACK_MODELS=false
 LMSTUDIO_TIMEOUT_MS=120000
 
 # Home Intel Mac: token-protected iMessage relay through the private tailnet

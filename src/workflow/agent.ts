@@ -1,9 +1,12 @@
 import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import path from 'node:path';
 import type { config as configFactory } from '../config/index.js';
 import { requireWordPress } from '../config/index.js';
-import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePlan, parseArticleSection, promptForArticlePlan, promptForArticleSection } from '../generation/article-generator.js';
+import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePlan, parseArticleSection, promptForArticlePlan, promptForArticleSection, type ArticlePlan } from '../generation/article-generator.js';
 import { ArticleFormatRegistry } from '../generation/article-format-registry.js';
-import { parseDraft, renderAndValidateArticle, saveDraft, validateStructuredSection } from '../generation/article-markdown-renderer.js';
+import { parseDraft, renderAndValidateArticle, saveDraft, validateStructuredSection, type StructuredSection } from '../generation/article-markdown-renderer.js';
+import { loadGenerationCheckpoint, removeGenerationCheckpoint, saveGenerationCheckpoint } from '../generation/generation-checkpoint.js';
 import { LMStudioClient } from '../lmstudio/client.js';
 import { parseReview } from '../messaging/imessage.js';
 import { createReviewPdf } from '../review/pdf.js';
@@ -20,12 +23,15 @@ export class BlogWorkflow {
   private readonly log: RunLog;
   private readonly lm: LMStudioClient;
   private readonly formats: Promise<ArticleFormatRegistry>;
+  private readonly checkpointDirectory: string;
 
   constructor(private readonly settings: Settings, private readonly messages: MessageAdapter, private readonly dryRun: boolean) {
     this.tracker = new ExcelTracker(settings.trackerPath);
     this.log = new RunLog(settings.runsDir);
     this.lm = new LMStudioClient(settings.lm, this.log);
     this.formats = ArticleFormatRegistry.load(settings.formatsDir);
+    const trackerScope = createHash('sha256').update(settings.trackerPath).digest('hex').slice(0, 12);
+    this.checkpointDirectory = path.join(settings.checkpointsDir, trackerScope);
   }
 
   private async notify(text: string, attachment?: string) {
@@ -111,31 +117,66 @@ export class BlogWorkflow {
     try {
       await this.log.write('workflow.generation_started', { blog_id: row.blog_id });
       const format = formats.get(row.blog_type);
-      const plan = await this.lm.generateStructured(promptForArticlePlan(row, format), articlePlanResponseSchema(format), text => parseArticlePlan(text, format));
-      const sections = [];
-      const models = new Set([plan.model]);
-      for (let index = 0; index < format.sections.length; index++) {
+      let checkpoint;
+      try { checkpoint = await loadGenerationCheckpoint(this.checkpointDirectory, row, format.template_hash); }
+      catch (error) {
+        await this.log.write('workflow.generation_checkpoint_invalid', { blog_id: row.blog_id, error: String(error) });
+        await removeGenerationCheckpoint(this.checkpointDirectory, row.blog_id);
+      }
+      let planValue: ArticlePlan | undefined;
+      const sections: StructuredSection[] = [];
+      const models = new Set<string>();
+      if (checkpoint) {
+        try {
+          planValue = checkpoint.plan;
+          checkpoint.models.forEach(model => models.add(model));
+          if (checkpoint.sections.length > format.sections.length || planValue.headings.length !== format.sections.length) throw new Error(`Generation checkpoint does not match format ${format.id}`);
+          checkpoint.sections.forEach((section, index) => {
+            validateStructuredSection(section, index);
+            sections.push(section);
+          });
+          await this.log.write('workflow.generation_resumed', { blog_id: row.blog_id, completed_sections: sections.length, checkpoint_updated_at: checkpoint.updated_at });
+        } catch (error) {
+          await this.log.write('workflow.generation_checkpoint_invalid', { blog_id: row.blog_id, error: String(error) });
+          await removeGenerationCheckpoint(this.checkpointDirectory, row.blog_id);
+          checkpoint = undefined;
+          sections.length = 0;
+          models.clear();
+        }
+      }
+      if (!checkpoint) {
+        const generatedPlan = await this.lm.generateStructured(promptForArticlePlan(row, format), articlePlanResponseSchema(format), text => parseArticlePlan(text, format));
+        planValue = generatedPlan.value;
+        models.add(generatedPlan.model);
+        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.template_hash, planValue, sections, models);
+        await this.log.write('workflow.generation_checkpoint_saved', { blog_id: row.blog_id, completed_sections: 0, checkpoint: checkpointPath });
+      }
+      if (!planValue) throw new Error(`Generation plan for Blog #${row.blog_id} was not available`);
+      for (let index = sections.length; index < format.sections.length; index++) {
         const definition = format.sections[index];
-        const target = Math.round(row.blog_length! * definition.word_percentage / 100);
         await this.log.write('workflow.section_generation_started', { blog_id: row.blog_id, section: definition.key, section_index: index + 1 });
         const generated = await this.lm.generateStructured(
-          promptForArticleSection(row, format, plan.value, index),
-          articleSectionResponseSchema(definition),
+          promptForArticleSection(row, format, planValue, index),
+          articleSectionResponseSchema,
           text => {
-            const section = { heading: plan.value.headings[index], blocks: parseArticleSection(text, definition) };
-            validateStructuredSection(target, definition, section, index);
+            const section = { heading: planValue.headings[index], ...parseArticleSection(text) };
+            validateStructuredSection(section, index);
             return section;
           }
         );
         models.add(generated.model);
         sections.push(generated.value);
+        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.template_hash, planValue, sections, models);
+        await this.log.write('workflow.generation_checkpoint_saved', { blog_id: row.blog_id, completed_sections: sections.length, checkpoint: checkpointPath });
         await this.log.write('workflow.section_generation_succeeded', { blog_id: row.blog_id, section: definition.key, section_index: index + 1, model: generated.model });
       }
       const model = [...models].join(', ');
-      const article = { ...plan.value, sections };
-      const markdown = renderAndValidateArticle(row, format, article);
-      const draft = await saveDraft(this.settings.draftsDir, row, markdown, model);
+      const article = { ...planValue, sections };
+      const markdown = renderAndValidateArticle(format, article);
+      const draft = await saveDraft(this.settings.draftsDir, row, format, markdown, model);
       draftGenerated = true;
+      await removeGenerationCheckpoint(this.checkpointDirectory, row.blog_id);
+      await this.log.write('workflow.generation_checkpoint_removed', { blog_id: row.blog_id });
       const reviewPdf = await createReviewPdf(draft);
       await this.log.write('workflow.review_pdf_created', { blog_id: row.blog_id, draft, review_pdf: reviewPdf });
       const requestedAt = new Date().toISOString();

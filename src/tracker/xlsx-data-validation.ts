@@ -3,7 +3,7 @@ import path from 'node:path';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 
 const trackerSheetName = 'Blog tracker';
-const validationRange = 'D2:D1000';
+const validationRange = 'C2:C1000';
 const inlineFormula = (formatIds: readonly string[]) => {
   if (!formatIds.length) throw new Error('At least one blog format ID is required for tracker validation');
   const formula = `"${formatIds.join(',')}"`;
