@@ -4,6 +4,10 @@
 
 ### Added
 
+- A holistic LM Studio article-review stage that owns a structured repair list covering factual accuracy, unsupported certainty, requirements versus recommendations, section scope, repetition, practical usefulness, clarity, and conclusion quality.
+- Targeted metadata, heading, and section repair prompts that consume every reviewer issue before the complete article is reviewed again.
+- Quality-loop checkpoints that preserve review rounds, pending repair items, issue-attempt history, repaired content, and model history across restarts.
+- Deterministic coverage for reviewer pass invariants, metadata and section repair prompts, quality escalation, and resumable repair state.
 - Focused PDF layout coverage for measured table rows, full-width text after tables, and wrapped list items near page footers.
 - WordPress HTML regression coverage for duplicate-title removal and `<h2>` article sections.
 - Posting-notification coverage for the URL returned by WordPress.
@@ -18,6 +22,10 @@
 
 ### Changed
 
+- Generation now follows plan, section writing, holistic review, targeted repair, and complete re-review before Markdown or PDF review artifacts are released.
+- Writer, reviewer, and repair calls now receive distinct task instructions while continuing to use the same configured LM Studio model and structured-output endpoints.
+- Shared factual-quality guidance now requires conditional treatment of variable outcomes, separates official requirements from recommendations, and prohibits invented sources, statistics, guarantees, causal outcomes, and arbitrary thresholds.
+- A repeated quoted problem advances from targeted repair to complete plan or section replacement; a third unresolved occurrence fails closed with its checkpoint preserved. Exact reviewer quotes are deterministically mapped back to the plan or correct section before repair.
 - Section-generation prompts now identify the current section's exclusive scope, pair the complete rendered heading set with format purposes, and tell LM Studio not to repeat the article title or section labels. Approximate word counts and editorial fields remain guidance only.
 - WordPress posting now removes a matching first body title and demotes remaining top-level Markdown headings to `<h2>` only in the generated HTML. Authoritative Markdown and review PDFs retain their original structure.
 - PDF tables and wrapped list items now use measured heights before page breaks and restore the normal page cursor after rendering.
@@ -31,6 +39,8 @@
 
 ### Fixed
 
+- Prevented articles with unresolved reviewer repair items from being saved, rendered, or sent for human approval.
+- Allowed the quality loop to repair title, excerpt, slug, taxonomy, and planned headings instead of trapping metadata problems in a section-only repair cycle.
 - Prevented table cells from leaving the PDF cursor at the final cell width, which narrowed or misplaced following text.
 - Prevented variable-height table rows and wrapped list items from crossing the review PDF footer.
 - Prevented a duplicate article title and top-level `<h1>` section headings in posted WordPress content.
@@ -48,12 +58,12 @@
 - The `example.md` file from every format; `format.json` is now the single source of truth.
 - The tracker `blog_length` column.
 - Section word-count tolerances, overall word-count rejection, exact paragraph-count rules, paragraph-size rules, required content-block rules, and word-allocation calculations.
-- The repository's topic-specific factual-review rules, deterministic claim checks, additional LM Studio quality-review pass, and automated repair rounds.
 - Closest-candidate word scoring and per-attempt word-count diagnostics.
 - The hard-coded TypeScript format union and fixed heading-count map.
 
 ### Tested
 
+- `npm run build`, `npm run lint`, all 35 deterministic tests, `npm run formats:validate`, and `git diff --check` for the writer-reviewer-repair implementation.
 - `npm run build`, `npm run lint`, all 31 deterministic tests, `npm run formats:validate`, and `git diff --check`.
 - A real production Blog #59 run used the configured, already-loaded `openai/gpt-oss-20b`. Its run log records health checks, first-attempt completion of the plan and all 10 sections, checkpoint removal, Markdown and PDF creation, successful iMessage delivery, and the final `awaiting_review` state.
 - Corrected local Blog #55 was checked against current primary Squarespace and WordPress documentation, regenerated without changing WordPress post `28357`, and visually inspected across all six PDF pages. Tables, wrapped list items, section transitions, margins, and footers render cleanly.

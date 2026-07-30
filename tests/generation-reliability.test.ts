@@ -27,8 +27,23 @@ test('checkpoints are tied to the complete selected format definition and remove
     headings: ['A Better Web Design Brief', 'Foundations']
   };
   try {
-    await saveGenerationCheckpoint(directory, row, 'format-a', plan, [{ heading: plan.headings[0], content: 'Useful content.' }], ['model']);
-    assert.equal((await loadGenerationCheckpoint(directory, row, 'format-a'))?.sections.length, 1);
+    const quality = {
+      review_round: 2,
+      repair_list: [{
+        issue_id: 'scope-1',
+        section_index: 1,
+        category: 'section_scope' as const,
+        quoted_text: 'Useful content.',
+        problem: 'The section drifts from its purpose.',
+        required_change: 'Keep the section inside its purpose.',
+        acceptance_condition: 'No unrelated material remains.'
+      }],
+      issue_attempts: { '1:section_scope': 1 }
+    };
+    await saveGenerationCheckpoint(directory, row, 'format-a', plan, [{ heading: plan.headings[0], content: 'Useful content.' }], ['model'], quality);
+    const saved = await loadGenerationCheckpoint(directory, row, 'format-a');
+    assert.equal(saved?.sections.length, 1);
+    assert.deepEqual(saved?.quality, quality);
     assert.equal(await loadGenerationCheckpoint(directory, row, 'format-b'), undefined);
     await removeGenerationCheckpoint(directory, row.blog_id);
     assert.equal(await loadGenerationCheckpoint(directory, row, 'format-a'), undefined);
