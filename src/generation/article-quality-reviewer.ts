@@ -31,6 +31,17 @@ export interface ArticleQualityReview {
   repair_list: ArticleQualityIssue[];
 }
 
+export type ArticleRepairAction = 'targeted' | 'reinforced' | 'replace';
+
+export interface CompletedArticleRepair {
+  review_round: number;
+  section_index: number;
+  action: ArticleRepairAction;
+  issues: ArticleQualityIssue[];
+  model: string;
+  completed_at: string;
+}
+
 const qualityIssueSchema = {
   type: 'object',
   additionalProperties: false,
@@ -96,23 +107,63 @@ export const locateArticleQualityIssues = (
   review: ArticleQualityReview,
   plan: ArticlePlan,
   sections: StructuredSection[]
-): ArticleQualityReview => ({
-  ...review,
-  repair_list: review.repair_list.map(issue => {
+): ArticleQualityReview => {
+  const repair_list = review.repair_list.flatMap(issue => {
     const locations: number[] = [];
-    if (JSON.stringify(plan).includes(issue.quoted_text)) locations.push(0);
+    const normalizedQuote = normalizedAnchorText(issue.quoted_text);
+    if (normalizedAnchorText(JSON.stringify(plan)).includes(normalizedQuote)) locations.push(0);
     sections.forEach((section, index) => {
-      if (section.content.includes(issue.quoted_text)) locations.push(index + 1);
+      if (normalizedAnchorText(section.content).includes(normalizedQuote)) locations.push(index + 1);
     });
-    if (locations.includes(issue.section_index)) return issue;
-    if (locations.length === 1) return { ...issue, section_index: locations[0]! };
-    throw new Error(`Article quality repair ${issue.issue_id} quoted_text must identify one exact plan or section location`);
-  })
-});
+    if (locations.includes(issue.section_index)) return [issue];
+    if (locations.length === 1) return [{ ...issue, section_index: locations[0]! }];
 
-const normalizedIssueQuote = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-export const qualityIssueKey = (issue: Pick<ArticleQualityIssue, 'section_index' | 'category' | 'quoted_text'>) =>
-  `${issue.section_index}:${issue.category}:${normalizedIssueQuote(issue.quoted_text)}`;
+    const candidates = [
+      { section_index: 0, content: JSON.stringify(plan) },
+      ...sections.map((section, index) => ({ section_index: index + 1, content: section.content }))
+    ].map(candidate => ({ ...candidate, score: anchorCoverage(normalizedQuote, normalizedAnchorText(candidate.content)) }))
+      .sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+    const second = candidates[1];
+    if (best && best.score >= 0.75 && (!second || best.score - second.score >= 0.1)) {
+      return [{ ...issue, section_index: best.section_index }];
+    }
+    return [];
+  });
+  if (review.verdict === 'revise' && !repair_list.length) {
+    throw new Error('Article quality review repair_list contains no problem text that still identifies a current plan or section location');
+  }
+  return { ...review, repair_list };
+};
+
+const normalizedAnchorText = (value: string) => value
+  .normalize('NFKC')
+  .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+  .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+  .replace(/[*_`~#>|]/g, '')
+  .replace(/[\u2010-\u2015\u2212]/g, '-')
+  .replace(/[\u2018\u2019]/g, "'")
+  .replace(/[\u201c\u201d]/g, '"')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLowerCase();
+
+const anchorCoverage = (normalizedQuote: string, normalizedLocation: string) => {
+  const quoteTokens = [...new Set(normalizedQuote.split(' ').filter(token => token.length > 2))];
+  if (quoteTokens.length < 3) return 0;
+  const locationTokens = new Set(normalizedLocation.split(' '));
+  return quoteTokens.filter(token => locationTokens.has(token)).length / quoteTokens.length;
+};
+
+const normalizedIssueProblem = (value: string) => value
+  .normalize('NFKC')
+  .toLowerCase()
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
+  .trim();
+
+export const qualityIssueKey = (issue: Pick<ArticleQualityIssue, 'section_index' | 'category' | 'problem'>) =>
+  `${issue.section_index}:${issue.category}:${normalizedIssueProblem(issue.problem)}`;
 
 export const recordQualityIssueAttempts = (
   current: Record<string, number>,
@@ -122,20 +173,26 @@ export const recordQualityIssueAttempts = (
   for (const key of new Set(issues.map(qualityIssueKey))) issue_attempts[key] = (issue_attempts[key] ?? 0) + 1;
   return {
     issue_attempts,
-    stalled_keys: [...new Set(issues.map(qualityIssueKey))].filter(key => issue_attempts[key]! >= 3)
+    stalled_keys: [...new Set(issues.map(qualityIssueKey))].filter(key => issue_attempts[key]! >= 4)
   };
 };
 
-export const requiresCompleteReplacement = (
+export const repairActionForIssues = (
   issueAttempts: Record<string, number>,
   issues: ArticleQualityIssue[]
-) => issues.some(issue => (issueAttempts[qualityIssueKey(issue)] ?? 0) >= 2);
+): ArticleRepairAction => {
+  const attempts = Math.max(0, ...issues.map(issue => issueAttempts[qualityIssueKey(issue)] ?? 0));
+  if (attempts >= 3) return 'replace';
+  if (attempts >= 2) return 'reinforced';
+  return 'targeted';
+};
 
 export const promptForArticleQualityReview = (
   row: Pick<BlogRow, 'blog_topic' | 'blog_type'>,
   format: ArticleFormat,
   plan: ArticlePlan,
-  sections: StructuredSection[]
+  sections: StructuredSection[],
+  completedRepairs: CompletedArticleRepair[] = []
 ) => `Act as the final senior factual and editorial reviewer for a WordPress article before it is shown to a human approver.
 
 Topic: ${row.blog_topic}
@@ -154,11 +211,24 @@ Review the complete assembled article, not each section in isolation. Inspect al
 - clarity, organization, professional tone, and suitability for the intended reader;
 - whether the conclusion synthesizes and closes without introducing another body topic.
 
-When a precise or current claim cannot be established from the supplied article context, require it to be removed or rewritten as durable, appropriately qualified guidance. Never invent a source, citation, URL, statistic, or correction.
+Perform a claim-by-claim falsification pass before deciding the verdict. A familiar, plausible, or commonly repeated statement is not automatically supported. Examine every sentence containing a number, standard, requirement, causal outcome, broad audience claim, or words such as "most," "typically," "automatically," "essential," "mandatory," "industry average," "ensures," "will," "flawlessly," "any device," or "without compromise." Require the article to distinguish standards and conformance levels from recommendations or examples.
 
-Create a repair item for every material problem. Use section_index 0 for title, excerpt, slug, categories, tags, or planned-heading problems; use the one-based section index for body-content problems. Quote the smallest exact text that identifies the problem. Make required_change concrete enough for a repair writer to execute, and make acceptance_condition specific enough for a later review to verify. Do not request arbitrary word counts, paragraph counts, lists, tables, or personal stylistic preferences.
+Before deciding the verdict, inventory every numeric threshold by subject across all sections. Conflicting values for the same subject cannot pass merely because they use different units or each resembles a common guideline. No authoritative source packet was supplied with this article, so any named external standard, version, conformance level, vendor guideline, or numeric requirement must be removed or replaced with a direction to verify the current primary documentation. Do not repair one unsupported threshold by inventing an explanation that attributes it to WCAG, Material Design, Google, or another authority. Apply the same cross-section comparison to timings, ratios, breakpoints, scores, and other thresholds.
 
-Return verdict "pass" only when the article is publishable without any material factual, structural, clarity, or usefulness correction, and return an empty repair_list. Otherwise return verdict "revise" and a complete repair_list. The repair writer, not you, will edit the article.
+Do not assume that a design or implementation method itself guarantees performance, accessibility, compatibility, search visibility, engagement, conversion, or business advantage. Require separate measurement or validation where the outcome depends on execution, audience, market, configuration, or baseline. When a precise or current claim cannot be established from the supplied article context, require it to be removed or rewritten as durable, appropriately qualified guidance. Never invent a source, citation, URL, statistic, or correction.
+
+Before returning pass, explicitly audit for unsupported claims about who or how many people use a device or channel; claims that a design approach itself causes loading, navigation, layout, or business outcomes; device widths presented as smallest, typical, or mandatory; breakpoints chosen only from popular device sizes; above-the-fold placement presented as a universal requirement; risk described as eliminated; and fixed experiment durations presented as proven thresholds without traffic or statistical context. These are material issues when they assert a fact, guarantee, or universal rule. Ordinary qualitative context, practical starting scopes, and suggested working sessions are not material defects merely because they use words such as "many" or propose a concrete next step.
+
+Apply the assigned section purposes literally. In particular, when the final section is assigned to synthesize and close with one useful action, a new multi-step audit, checklist, procedure, or body topic is a conclusion-quality problem even if the material is otherwise useful.
+
+Create a repair item for every material problem; do not stop after finding the first issue. Use section_index 0 for title, excerpt, slug, categories, tags, or planned-heading problems; use the one-based section index for body-content problems. Quote the smallest exact text that identifies the problem. Make required_change concrete enough for a repair writer to execute, and make acceptance_condition specific enough for a later review to verify. A suggested correction and its acceptance condition must themselves satisfy this review contract; never recommend another unsupported quantifier or arbitrary threshold as the fix. Do not request arbitrary word counts, paragraph counts, lists, tables, or personal stylistic preferences.
+
+The completed-repair history below records issues already assigned to the repair writer. Verify every acceptance condition against the current complete article. If the same underlying problem remains, reuse its prior issue_id, section_index, and category even when the current problematic quote changed. Do not report a repaired issue merely because it appeared in the history.
+
+Do not defer to a prior repair, prior verdict, or the article's confident tone. Return verdict "pass" only after the claim-by-claim and cross-section checks find no material factual, structural, clarity, or usefulness correction, and return an empty repair_list. Otherwise return verdict "revise" and a complete repair_list. The repair writer, not you, will edit the article.
+
+Completed repair history:
+${JSON.stringify(completedRepairs)}
 
 Article plan:
 ${JSON.stringify(plan)}

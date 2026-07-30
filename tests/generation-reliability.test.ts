@@ -28,6 +28,7 @@ test('checkpoints are tied to the complete selected format definition and remove
   };
   try {
     const quality = {
+      phase: 'repairing' as const,
       review_round: 2,
       repair_list: [{
         issue_id: 'scope-1',
@@ -38,12 +39,45 @@ test('checkpoints are tied to the complete selected format definition and remove
         required_change: 'Keep the section inside its purpose.',
         acceptance_condition: 'No unrelated material remains.'
       }],
-      issue_attempts: { '1:section_scope': 1 }
+      completed_repairs: [{
+        review_round: 1,
+        section_index: 1,
+        action: 'targeted' as const,
+        issues: [{
+          issue_id: 'scope-1',
+          section_index: 1,
+          category: 'section_scope' as const,
+          quoted_text: 'Earlier content.',
+          problem: 'The section drifted from its purpose.',
+          required_change: 'Keep the section inside its purpose.',
+          acceptance_condition: 'No unrelated material remains.'
+        }],
+        model: 'configured-model',
+        completed_at: '2026-07-30T14:00:00.000Z'
+      }],
+      issue_attempts: { '1:section_scope:the section drifted from its purpose': 2 },
+      last_review: {
+        verdict: 'revise' as const,
+        repair_list: [{
+          issue_id: 'scope-1',
+          section_index: 1,
+          category: 'section_scope' as const,
+          quoted_text: 'Useful content.',
+          problem: 'The section drifts from its purpose.',
+          required_change: 'Keep the section inside its purpose.',
+          acceptance_condition: 'No unrelated material remains.'
+        }]
+      }
     };
-    await saveGenerationCheckpoint(directory, row, 'format-a', plan, [{ heading: plan.headings[0], content: 'Useful content.' }], ['model'], quality);
+    const modelHistory = [
+      { operation: 'write' as const, model: 'configured-model', section_index: 1, completed_at: '2026-07-30T13:00:00.000Z' },
+      { operation: 'review' as const, model: 'configured-model', review_round: 2, completed_at: '2026-07-30T14:05:00.000Z' }
+    ];
+    await saveGenerationCheckpoint(directory, row, 'format-a', plan, [{ heading: plan.headings[0], content: 'Useful content.' }], modelHistory, quality);
     const saved = await loadGenerationCheckpoint(directory, row, 'format-a');
     assert.equal(saved?.sections.length, 1);
     assert.deepEqual(saved?.quality, quality);
+    assert.deepEqual(saved?.model_history, modelHistory);
     assert.equal(await loadGenerationCheckpoint(directory, row, 'format-b'), undefined);
     await removeGenerationCheckpoint(directory, row.blog_id);
     assert.equal(await loadGenerationCheckpoint(directory, row, 'format-a'), undefined);

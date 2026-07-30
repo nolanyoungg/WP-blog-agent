@@ -26,6 +26,7 @@ Do not rely on memory or third-party tutorials when official documentation exist
 ## Strict Restrictions
 
 - Only LM Studio and LM Link are allowed as model providers
+- When implementing features, test with a separate tracker copy and a dry run of `npm run once` to inspect the generated blog.
 - Do not introduce:
   - Mock model clients
   - Fake inference servers

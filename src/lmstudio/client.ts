@@ -7,7 +7,7 @@ export interface StructuredGenerationOptions {
   operation?: 'write' | 'review' | 'repair';
 }
 
-export const selectLlmCandidates = (primaryModel: string, models: NativeModel[], allowFallbackModels = false): LlmCandidate[] => {
+export const selectLlmCandidates = (primaryModel: string, models: NativeModel[]): LlmCandidate[] => {
   const grouped = new Map<string, LlmCandidate>();
   for (const model of models) {
     if (model.type !== 'llm' || !model.key) continue;
@@ -16,10 +16,7 @@ export const selectLlmCandidates = (primaryModel: string, models: NativeModel[],
     if (!existing || (!existing.loaded && Boolean(loadedInstance))) grouped.set(model.key, { key: model.key, instanceId: loadedInstance, loaded: Boolean(loadedInstance) });
   }
   const primary = grouped.get(primaryModel);
-  if (!allowFallbackModels) return primary ? [primary] : [];
-  const loadedFallbacks = [...grouped.values()].filter(candidate => candidate.key !== primaryModel && candidate.loaded);
-  const unloadedFallbacks = [...grouped.values()].filter(candidate => candidate.key !== primaryModel && !candidate.loaded);
-  return [...(primary ? [primary] : []), ...loadedFallbacks, ...unloadedFallbacks];
+  return primary ? [primary] : [];
 };
 
 const textFrom = (body: any) => body?.choices?.[0]?.message?.content ?? body?.output?.find((x: any) => x.type === 'message')?.content ?? body?.output_text;
@@ -39,7 +36,7 @@ Preserve useful content and correct only the structural or JSON problem.${repeat
 Return the complete corrected structured result.`;
 
 export class LMStudioClient {
-  constructor(private readonly settings: { baseUrl: string; token: string; primaryModel: string; allowFallbackModels: boolean; timeoutMs: number; maxTokens: number; retryLimit: number }, private readonly log: RunLog) {}
+  constructor(private readonly settings: { baseUrl: string; token: string; primaryModel: string; timeoutMs: number; maxTokens: number; retryLimit: number }, private readonly log: RunLog) {}
 
   private async request(path: string, init: RequestInit = {}) {
     const controller = new AbortController();
@@ -125,17 +122,18 @@ export class LMStudioClient {
     const instructions = options.instructions ?? 'Write an accurate, original WordPress blog article as structured JSON.';
     const operation = options.operation ?? 'write';
     await this.health();
-    const candidates = selectLlmCandidates(this.settings.primaryModel, await this.nativeModels(), this.settings.allowFallbackModels);
+    const candidates = selectLlmCandidates(this.settings.primaryModel, await this.nativeModels());
     let last: unknown;
     let lastCorrection: string | undefined;
     let previousText: string | undefined;
+    let lastResultRepeated = false;
     for (const candidate of candidates) {
       try {
         const model = candidate.loaded ? (candidate.instanceId ?? candidate.key) : await this.load(candidate.key);
         for (let attempt = 0; attempt <= this.settings.retryLimit; attempt++) {
           let text = '';
           try {
-            text = await this.completion(model, candidate.key, prompt, schema, instructions, lastCorrection, previousText, false);
+            text = await this.completion(model, candidate.key, prompt, schema, instructions, lastCorrection, previousText, lastResultRepeated);
             const value = parseAndValidate(text);
             await this.log.write('lmstudio.generation_succeeded', { model, attempt, operation });
             return { value, model };
@@ -143,6 +141,7 @@ export class LMStudioClient {
             last = error;
             const repeatedCandidate = Boolean(text && previousText && text === previousText);
             if (text) previousText = text;
+            lastResultRepeated = repeatedCandidate;
             lastCorrection = String(error).slice(0, 1000);
             await this.log.write('lmstudio.generation_failed', { model, attempt, operation, error: String(error), repeated_candidate: repeatedCandidate });
           }

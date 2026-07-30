@@ -1,7 +1,7 @@
 import type { BlogRow } from '../domain/blog.js';
 import type { ArticleFormat } from './article-format-registry.js';
 import type { StructuredArticle, StructuredSection } from './article-markdown-renderer.js';
-import type { ArticleQualityIssue } from './article-quality-reviewer.js';
+import type { ArticleQualityIssue, ArticleRepairAction } from './article-quality-reviewer.js';
 
 export interface ArticlePlan extends Omit<StructuredArticle, 'sections'> {
   headings: string[];
@@ -9,10 +9,16 @@ export interface ArticlePlan extends Omit<StructuredArticle, 'sections'> {
 
 export const factualQualityContract = `Factual and editorial quality requirements:
 - Do not invent citations, statistics, survey results, market-share figures, client outcomes, product behavior, legal requirements, standards, or performance targets.
+- No authoritative source packet is supplied to this call. Do not name an external standard, version, conformance level, vendor guideline, or numeric requirement from memory. Omit the number or tell the reader to verify the current primary documentation.
 - Do not promise or imply guaranteed SEO rankings, traffic, revenue, conversions, savings, security, compliance, accessibility, or performance outcomes.
 - Treat outcomes that depend on implementation, audience, market, configuration, or baseline as conditional, and name the important dependency instead of using empty certainty.
+- Do not use universal wording such as "flawlessly," "on any device," "for all users," or "without compromise" for compatibility, usability, accessibility, or performance.
+- Do not infer audience behavior, device usage, market prevalence, or business importance from the article topic. Claims using words such as "most," "typically," "essential," "mandatory," or "industry average" require supplied support; otherwise replace them with a reader-specific check such as analytics, research, or direct testing.
+- Do not say a design or implementation approach automatically produces performance, accessibility, compatibility, search visibility, engagement, or conversion benefits. Explain that those outcomes require separate implementation and validation.
+- Do not claim that desktop-first, mobile-first, responsive design, progressive enhancement, or another approach inherently causes slow loading, unusable navigation, layout failure, or a successful outcome. Separate the chosen approach from implementation defects and measured results.
 - Distinguish an official requirement from a common recommendation, heuristic, example, or reader-chosen target.
-- Use exact numbers only when they are stable and necessary. Identify what the number represents; otherwise tell the reader to measure against an appropriate baseline or verify the current primary documentation.
+- Use exact numbers only when they are stable and necessary. For pixels, viewport sizes, timings, ratios, breakpoints, scores, experiment durations, or other thresholds, identify the governing standard and level or label the number as an example; otherwise tell the reader to choose from content behavior, traffic volume, an appropriate baseline, or current primary documentation. Do not give conflicting thresholds for the same concept.
+- Do not present one device width as the smallest or typical viewport, choose responsive breakpoints from popular device sizes alone, present above-the-fold placement as a universal requirement, or prescribe a fixed experiment duration as a proven threshold without the evidence needed for that decision.
 - Prefer durable, accurate explanations over claims that depend on current product versions or changing market conditions.
 - Give practical advice with its reasoning, constraints, and relevant tradeoffs. Do not turn a reasonable option into a universal rule.
 - If a precise claim cannot be supported from the supplied article context, omit it or replace it with accurate, appropriately qualified guidance.`;
@@ -132,7 +138,7 @@ export const promptForArticleSectionRepair = (
   index: number,
   currentContent: string,
   issues: ArticleQualityIssue[],
-  replaceEntireSection = false
+  action: ArticleRepairAction = 'targeted'
 ) => {
   const section = format.sections[index];
   if (!section) throw new Error(`Format ${format.id} has no section ${index + 1}`);
@@ -163,9 +169,13 @@ Current section content:
 ${currentContent}
 </current_section>
 
-${replaceEntireSection
-    ? 'A targeted repair did not fully resolve this section. Replace the section body completely with a stronger version that satisfies every repair item and the original section purpose.'
-    : 'Revise only what is necessary to satisfy every repair item. Preserve accurate, useful material that is unrelated to the listed problems.'}
+The factual-quality contract remains authoritative when applying the repair list. If a suggested example or acceptance condition would merely replace an unsupported absolute with an unsupported vague quantifier such as "many," "often," or "a significant portion," remove the distribution claim or replace it with a reader-specific analytics or testing decision instead.
+
+${action === 'replace'
+    ? 'Earlier targeted repairs did not resolve these problems. Replace the section body completely with a stronger version that satisfies every repair item and the original section purpose.'
+    : action === 'reinforced'
+      ? 'A targeted repair did not fully resolve these problems. Make a materially stronger correction: check every acceptance condition explicitly, remove the underlying cause rather than only rephrasing the quoted text, and preserve sound unrelated material.'
+      : 'Revise only what is necessary to satisfy every repair item. Preserve accurate, useful material that is unrelated to the listed problems.'}
 
 Return only the JSON object required by the response schema, with the complete replacement section body in "content" as ordinary Markdown. Do not merely describe the edits. Do not include the article title, any section heading, or labels such as "revised section." Do not add H1 headings.`;
 };
@@ -175,7 +185,7 @@ export const promptForArticlePlanRepair = (
   format: ArticleFormat,
   plan: ArticlePlan,
   issues: ArticleQualityIssue[],
-  replaceEntirePlan = false
+  action: ArticleRepairAction = 'targeted'
 ) => {
   if (!issues.length) throw new Error('Article plan repair requires at least one quality issue');
   const repairs = issues.map(issue => `- Repair ID: ${issue.issue_id}
@@ -203,9 +213,11 @@ ${JSON.stringify(plan)}
 Required format sections:
 ${sectionPurposes}
 
-${replaceEntirePlan
-    ? 'A targeted plan repair did not resolve the problems. Replace the metadata and planned headings completely while preserving the topic and required format structure.'
-    : 'Change only the metadata or headings necessary to satisfy every repair item. Preserve sound plan fields.'}
+${action === 'replace'
+    ? 'Earlier targeted plan repairs did not resolve the problems. Replace the metadata and planned headings completely while preserving the topic and required format structure.'
+    : action === 'reinforced'
+      ? 'A targeted plan repair did not fully resolve these problems. Make a materially stronger correction: check every acceptance condition explicitly and remove the underlying cause rather than only rephrasing the quoted text.'
+      : 'Change only the metadata or headings necessary to satisfy every repair item. Preserve sound plan fields.'}
 
 Return only the JSON object required by the article-plan response schema. The sections object must contain exactly these keys in order: ${format.sections.map(section => section.key).join(', ')}. Each section value contains only its repaired topic-specific heading. Do not write body content.`;
 };

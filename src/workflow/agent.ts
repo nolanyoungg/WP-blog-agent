@@ -6,8 +6,8 @@ import { requireWordPress } from '../config/index.js';
 import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePlan, parseArticleSection, promptForArticlePlan, promptForArticlePlanRepair, promptForArticleSection, promptForArticleSectionRepair, type ArticlePlan } from '../generation/article-generator.js';
 import { ArticleFormatRegistry } from '../generation/article-format-registry.js';
 import { parseDraft, renderAndValidateArticle, saveDraft, validateStructuredSection, type StructuredSection } from '../generation/article-markdown-renderer.js';
-import { loadGenerationCheckpoint, removeGenerationCheckpoint, saveGenerationCheckpoint, type GenerationQualityState } from '../generation/generation-checkpoint.js';
-import { articleQualityReviewSchema, locateArticleQualityIssues, parseArticleQualityReview, promptForArticleQualityReview, qualityIssueKey, recordQualityIssueAttempts, requiresCompleteReplacement } from '../generation/article-quality-reviewer.js';
+import { loadGenerationCheckpoint, removeGenerationCheckpoint, saveGenerationCheckpoint, type GenerationModelHistoryEntry, type GenerationQualityState } from '../generation/generation-checkpoint.js';
+import { articleQualityReviewSchema, locateArticleQualityIssues, parseArticleQualityReview, promptForArticleQualityReview, qualityIssueKey, recordQualityIssueAttempts, repairActionForIssues, type ArticleRepairAction } from '../generation/article-quality-reviewer.js';
 import { LMStudioClient } from '../lmstudio/client.js';
 import { parseReview, postedNotification } from '../messaging/imessage.js';
 import { createReviewPdf } from '../review/pdf.js';
@@ -21,6 +21,13 @@ type Settings = ReturnType<typeof configFactory>;
 const writerInstructions = 'Write an accurate, original WordPress blog article as structured JSON. Follow the assigned section boundaries and factual-quality requirements.';
 const reviewerInstructions = 'Act as a strict senior factual and editorial reviewer. Produce the complete repair list, but do not rewrite the article. Pass only when nothing material remains to fix.';
 const repairInstructions = 'Act as a precise senior article editor. Correct every supplied repair item, preserve sound material when possible, and return the complete repaired section as structured JSON.';
+const initialQualityState = (): GenerationQualityState => ({
+  phase: 'generating',
+  review_round: 0,
+  repair_list: [],
+  completed_repairs: [],
+  issue_attempts: {}
+});
 
 export class BlogWorkflow {
   private readonly tracker: ExcelTracker;
@@ -134,13 +141,13 @@ export class BlogWorkflow {
       }
       let planValue: ArticlePlan | undefined;
       const sections: StructuredSection[] = [];
-      const models = new Set<string>();
-      let quality: GenerationQualityState = { review_round: 0, repair_list: [], issue_attempts: {} };
+      const modelHistory: GenerationModelHistoryEntry[] = [];
+      let quality = initialQualityState();
       if (checkpoint) {
         try {
           planValue = checkpoint.plan;
           quality = checkpoint.quality;
-          checkpoint.models.forEach(model => models.add(model));
+          modelHistory.push(...checkpoint.model_history);
           if (checkpoint.sections.length > format.sections.length || planValue.headings.length !== format.sections.length) throw new Error(`Generation checkpoint does not match format ${format.id}`);
           checkpoint.sections.forEach((section, index) => {
             validateStructuredSection(section, index);
@@ -158,8 +165,8 @@ export class BlogWorkflow {
           await removeGenerationCheckpoint(this.checkpointDirectory, row.blog_id);
           checkpoint = undefined;
           sections.length = 0;
-          models.clear();
-          quality = { review_round: 0, repair_list: [], issue_attempts: {} };
+          modelHistory.length = 0;
+          quality = initialQualityState();
         }
       }
       if (!checkpoint) {
@@ -170,8 +177,8 @@ export class BlogWorkflow {
           { instructions: writerInstructions, operation: 'write' }
         );
         planValue = generatedPlan.value;
-        models.add(generatedPlan.model);
-        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, planValue, sections, models, quality);
+        modelHistory.push({ operation: 'write', model: generatedPlan.model, section_index: 0, completed_at: new Date().toISOString() });
+        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, planValue, sections, modelHistory, quality);
         await this.log.write('workflow.generation_checkpoint_saved', { blog_id: row.blog_id, completed_sections: 0, checkpoint: checkpointPath });
       }
       if (!planValue) throw new Error(`Generation plan for Blog #${row.blog_id} was not available`);
@@ -189,43 +196,56 @@ export class BlogWorkflow {
           },
           { instructions: writerInstructions, operation: 'write' }
         );
-        models.add(generated.model);
+        modelHistory.push({ operation: 'write', model: generated.model, section_index: index + 1, completed_at: new Date().toISOString() });
         sections.push(generated.value);
-        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, models, quality);
+        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, modelHistory, quality);
         await this.log.write('workflow.generation_checkpoint_saved', { blog_id: row.blog_id, completed_sections: sections.length, checkpoint: checkpointPath });
         await this.log.write('workflow.section_generation_succeeded', { blog_id: row.blog_id, section: definition.key, section_index: index + 1, model: generated.model });
       }
 
-      while (true) {
+      while (quality.phase !== 'passed') {
         if (quality.repair_list.length) {
           const sectionIndexes = [...new Set(quality.repair_list.map(issue => issue.section_index))].sort((a, b) => a - b);
           for (const sectionNumber of sectionIndexes) {
             if (sectionNumber === 0) {
               const issues = quality.repair_list.filter(issue => issue.section_index === 0);
-              const replaceEntirePlan = requiresCompleteReplacement(quality.issue_attempts, issues);
+              const action = repairActionForIssues(quality.issue_attempts, issues);
               await this.log.write('workflow.article_plan_repair_started', {
                 blog_id: row.blog_id,
                 review_round: quality.review_round,
                 issue_ids: issues.map(issue => issue.issue_id),
                 issue_categories: issues.map(issue => issue.category),
-                replacement: replaceEntirePlan
+                action
               });
               const repairedPlan = await this.lm.generateStructured(
-                promptForArticlePlanRepair(row, format, currentPlan, issues, replaceEntirePlan),
+                promptForArticlePlanRepair(row, format, currentPlan, issues, action),
                 articlePlanResponseSchema(format),
                 text => parseArticlePlan(text, format),
                 { instructions: repairInstructions, operation: 'repair' }
               );
               currentPlan = repairedPlan.value;
               sections.forEach((section, index) => { section.heading = currentPlan.headings[index]!; });
-              models.add(repairedPlan.model);
-              quality = { ...quality, repair_list: quality.repair_list.filter(issue => issue.section_index !== 0) };
-              const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, models, quality);
+              const completedAt = new Date().toISOString();
+              modelHistory.push({ operation: 'repair', model: repairedPlan.model, section_index: 0, review_round: quality.review_round, completed_at: completedAt });
+              quality = {
+                ...quality,
+                phase: 'repairing',
+                repair_list: quality.repair_list.filter(issue => issue.section_index !== 0),
+                completed_repairs: [...quality.completed_repairs, {
+                  review_round: quality.review_round,
+                  section_index: 0,
+                  action,
+                  issues,
+                  model: repairedPlan.model,
+                  completed_at: completedAt
+                }]
+              };
+              const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, modelHistory, quality);
               await this.log.write('workflow.article_plan_repaired', {
                 blog_id: row.blog_id,
                 review_round: quality.review_round,
                 issue_ids: issues.map(issue => issue.issue_id),
-                replacement: replaceEntirePlan,
+                action,
                 model: repairedPlan.model,
                 checkpoint: checkpointPath
               });
@@ -233,17 +253,25 @@ export class BlogWorkflow {
             }
             const index = sectionNumber - 1;
             const issues = quality.repair_list.filter(issue => issue.section_index === sectionNumber);
-            const replaceEntireSection = requiresCompleteReplacement(quality.issue_attempts, issues);
+            const action = repairActionForIssues(quality.issue_attempts, issues);
             await this.log.write('workflow.article_repair_started', {
               blog_id: row.blog_id,
               review_round: quality.review_round,
               section_index: sectionNumber,
               issue_ids: issues.map(issue => issue.issue_id),
               issue_categories: issues.map(issue => issue.category),
-              replacement: replaceEntireSection
+              action
             });
+            if (action === 'replace') {
+              await this.log.write('workflow.article_full_section_replacement', {
+                blog_id: row.blog_id,
+                review_round: quality.review_round,
+                section_index: sectionNumber,
+                issue_ids: issues.map(issue => issue.issue_id)
+              });
+            }
             const repaired = await this.lm.generateStructured(
-              promptForArticleSectionRepair(row, format, currentPlan, index, sections[index]!.content, issues, replaceEntireSection),
+              promptForArticleSectionRepair(row, format, currentPlan, index, sections[index]!.content, issues, action),
               articleSectionResponseSchema,
               text => {
                 const section = { heading: currentPlan.headings[index], ...parseArticleSection(text) };
@@ -253,15 +281,28 @@ export class BlogWorkflow {
               { instructions: repairInstructions, operation: 'repair' }
             );
             sections[index] = repaired.value;
-            models.add(repaired.model);
-            quality = { ...quality, repair_list: quality.repair_list.filter(issue => issue.section_index !== sectionNumber) };
-            const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, models, quality);
+            const completedAt = new Date().toISOString();
+            modelHistory.push({ operation: 'repair', model: repaired.model, section_index: sectionNumber, review_round: quality.review_round, completed_at: completedAt });
+            quality = {
+              ...quality,
+              phase: 'repairing',
+              repair_list: quality.repair_list.filter(issue => issue.section_index !== sectionNumber),
+              completed_repairs: [...quality.completed_repairs, {
+                review_round: quality.review_round,
+                section_index: sectionNumber,
+                action,
+                issues,
+                model: repaired.model,
+                completed_at: completedAt
+              }]
+            };
+            const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, modelHistory, quality);
             await this.log.write('workflow.article_section_repaired', {
               blog_id: row.blog_id,
               review_round: quality.review_round,
               section_index: sectionNumber,
               issue_ids: issues.map(issue => issue.issue_id),
-              replacement: replaceEntireSection,
+              action,
               model: repaired.model,
               checkpoint: checkpointPath
             });
@@ -270,14 +311,16 @@ export class BlogWorkflow {
         }
 
         const reviewRound = quality.review_round + 1;
+        quality = { ...quality, phase: 'reviewing', repair_list: [] };
+        await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, modelHistory, quality);
         await this.log.write('workflow.article_review_started', { blog_id: row.blog_id, review_round: reviewRound });
         const reviewed = await this.lm.generateStructured(
-          promptForArticleQualityReview(row, format, currentPlan, sections),
+          promptForArticleQualityReview(row, format, currentPlan, sections, quality.completed_repairs),
           articleQualityReviewSchema,
           text => locateArticleQualityIssues(parseArticleQualityReview(text, sections.length), currentPlan, sections),
           { instructions: reviewerInstructions, operation: 'review' }
         );
-        models.add(reviewed.model);
+        modelHistory.push({ operation: 'review', model: reviewed.model, review_round: reviewRound, completed_at: new Date().toISOString() });
         await this.log.write('workflow.article_review_completed', {
           blog_id: row.blog_id,
           review_round: reviewRound,
@@ -288,14 +331,22 @@ export class BlogWorkflow {
           model: reviewed.model
         });
         if (reviewed.value.verdict === 'pass') {
-          quality = { ...quality, review_round: reviewRound, repair_list: [] };
-          await this.log.write('workflow.article_quality_passed', { blog_id: row.blog_id, review_round: reviewRound, model: reviewed.model });
+          quality = { ...quality, phase: 'passed', review_round: reviewRound, repair_list: [], last_review: reviewed.value };
+          const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, modelHistory, quality);
+          await this.log.write('workflow.article_quality_passed', { blog_id: row.blog_id, review_round: reviewRound, model: reviewed.model, checkpoint: checkpointPath });
           break;
         }
 
         const attempts = recordQualityIssueAttempts(quality.issue_attempts, reviewed.value.repair_list);
-        quality = { review_round: reviewRound, repair_list: reviewed.value.repair_list, issue_attempts: attempts.issue_attempts };
-        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, models, quality);
+        quality = {
+          ...quality,
+          phase: 'repairing',
+          review_round: reviewRound,
+          repair_list: reviewed.value.repair_list,
+          issue_attempts: attempts.issue_attempts,
+          last_review: reviewed.value
+        };
+        const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, modelHistory, quality);
         await this.log.write('workflow.article_repair_list_saved', {
           blog_id: row.blog_id,
           review_round: reviewRound,
@@ -304,22 +355,23 @@ export class BlogWorkflow {
         });
         if (attempts.stalled_keys.length) {
           const unresolved = quality.repair_list
-            .filter(issue => (quality.issue_attempts[qualityIssueKey(issue)] ?? 0) >= 3)
+            .filter(issue => (quality.issue_attempts[qualityIssueKey(issue)] ?? 0) >= 4)
             .map(issue => `${issue.issue_id} (${issue.category}, section ${issue.section_index})`);
+          await this.log.write('workflow.article_quality_stalled', { blog_id: row.blog_id, review_round: reviewRound, unresolved, checkpoint: checkpointPath });
           await this.log.write('workflow.article_quality_failed', { blog_id: row.blog_id, review_round: reviewRound, unresolved });
           throw new Error(`Article quality review could not resolve repeated issues: ${unresolved.join(', ')}`);
         }
       }
 
-      const model = [...models].join(', ');
+      const model = [...new Set(modelHistory.map(entry => entry.model))].join(', ');
       const article = { ...currentPlan, sections };
       const markdown = renderAndValidateArticle(format, article);
       const draft = await saveDraft(this.settings.draftsDir, row, format, markdown, model);
       draftGenerated = true;
-      await removeGenerationCheckpoint(this.checkpointDirectory, row.blog_id);
-      await this.log.write('workflow.generation_checkpoint_removed', { blog_id: row.blog_id });
       const reviewPdf = await createReviewPdf(draft);
       await this.log.write('workflow.review_pdf_created', { blog_id: row.blog_id, draft, review_pdf: reviewPdf });
+      await removeGenerationCheckpoint(this.checkpointDirectory, row.blog_id);
+      await this.log.write('workflow.generation_checkpoint_removed', { blog_id: row.blog_id });
       const requestedAt = new Date().toISOString();
       await this.tracker.update(row.blog_id, { blog_status: 'awaiting_review', review_status: 'pending', review_token: `YES ${row.blog_id} / NO ${row.blog_id}`, markdown_path: draft, model_used: model, blog_created_date: requestedAt });
       await this.notify(`Blog draft #${row.blog_id} is ready: “${row.blog_topic}”\n\nReply exactly:\nYES ${row.blog_id} — post it to WordPress\nNO ${row.blog_id} — reject and stop`, reviewPdf);

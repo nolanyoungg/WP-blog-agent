@@ -22,6 +22,15 @@ test('generation uses the selected JSON format and its editorial fields only as 
   assert.match(planPrompt, /heading must signal synthesis or a next step, not another body topic/);
   assert.match(planPrompt, /Do not promise or imply guaranteed SEO rankings, traffic, revenue, conversions, savings, security, compliance, accessibility, or performance outcomes/);
   assert.match(planPrompt, /Distinguish an official requirement from a common recommendation, heuristic, example, or reader-chosen target/);
+  assert.match(planPrompt, /Do not infer audience behavior, device usage, market prevalence, or business importance from the article topic/);
+  assert.match(planPrompt, /Do not use universal wording such as "flawlessly," "on any device," "for all users," or "without compromise"/);
+  assert.match(planPrompt, /No authoritative source packet is supplied to this call/);
+  assert.match(planPrompt, /Do not say a design or implementation approach automatically produces performance, accessibility, compatibility, search visibility, engagement, or conversion benefits/);
+  assert.match(planPrompt, /Do not claim that desktop-first, mobile-first, responsive design, progressive enhancement, or another approach inherently causes slow loading/);
+  assert.match(planPrompt, /Do not present one device width as the smallest or typical viewport/);
+  assert.match(planPrompt, /present above-the-fold placement as a universal requirement/);
+  assert.match(planPrompt, /prescribe a fixed experiment duration as a proven threshold/);
+  assert.match(planPrompt, /Do not give conflicting thresholds for the same concept/);
   const schema = articlePlanResponseSchema(format) as any;
   assert.deepEqual(schema.properties.sections.required, ['introduction', 'central_idea', 'practical_action', 'next_step']);
   const plan = {
@@ -67,7 +76,25 @@ test('generation uses the selected JSON format and its editorial fields only as 
     problem: 'The issue survived repair.',
     required_change: 'Replace the unsupported claim.',
     acceptance_condition: 'No unsupported claim remains.'
-  }], true), /Replace the section body completely/);
+  }], 'replace'), /Replace the section body completely/);
+  assert.match(promptForArticleSectionRepair(row, format, plan, 1, 'Bad section.', [{
+    issue_id: 'seo-certainty',
+    section_index: 2,
+    category: 'unsupported_certainty',
+    quoted_text: 'Bad section.',
+    problem: 'The issue survived repair.',
+    required_change: 'Replace the unsupported claim.',
+    acceptance_condition: 'No unsupported claim remains.'
+  }], 'reinforced'), /materially stronger correction/);
+  assert.match(promptForArticleSectionRepair(row, format, plan, 1, 'Bad section.', [{
+    issue_id: 'audience-claim',
+    section_index: 2,
+    category: 'unsupported_certainty',
+    quoted_text: 'Most visitors use phones.',
+    problem: 'The audience distribution is unsupported.',
+    required_change: 'Qualify the claim.',
+    acceptance_condition: 'Use many or often instead.'
+  }]), /remove the distribution claim or replace it with a reader-specific analytics or testing decision/);
 
   const planRepairPrompt = promptForArticlePlanRepair(row, format, plan, [{
     issue_id: 'excerpt-1',
