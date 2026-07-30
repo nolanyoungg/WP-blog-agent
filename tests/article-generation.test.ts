@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePlan, parseArticleSection, promptForArticlePlan, promptForArticleSection } from '../src/generation/article-generator.js';
+import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePlan, parseArticleSection, promptForArticlePlan, promptForArticlePlanRepair, promptForArticleSection, promptForArticleSectionRepair } from '../src/generation/article-generator.js';
 import { ArticleFormatRegistry } from '../src/generation/article-format-registry.js';
 import { parseDraft, renderAndValidateArticle, saveDraft, type StructuredArticle } from '../src/generation/article-markdown-renderer.js';
 
@@ -20,6 +20,17 @@ test('generation uses the selected JSON format and its editorial fields only as 
   assert.match(planPrompt, /writing guidance, not an exact quota/i);
   assert.match(planPrompt, /Plan a distinct, non-overlapping scope for every section/);
   assert.match(planPrompt, /heading must signal synthesis or a next step, not another body topic/);
+  assert.match(planPrompt, /Do not promise or imply guaranteed SEO rankings, traffic, revenue, conversions, savings, security, compliance, accessibility, or performance outcomes/);
+  assert.match(planPrompt, /Distinguish an official requirement from a common recommendation, heuristic, example, or reader-chosen target/);
+  assert.match(planPrompt, /Do not infer audience behavior, device usage, market prevalence, or business importance from the article topic/);
+  assert.match(planPrompt, /Do not use universal wording such as "flawlessly," "on any device," "for all users," or "without compromise"/);
+  assert.match(planPrompt, /No authoritative source packet is supplied to this call/);
+  assert.match(planPrompt, /Do not say a design or implementation approach automatically produces performance, accessibility, compatibility, search visibility, engagement, or conversion benefits/);
+  assert.match(planPrompt, /Do not claim that desktop-first, mobile-first, responsive design, progressive enhancement, or another approach inherently causes slow loading/);
+  assert.match(planPrompt, /Do not present one device width as the smallest or typical viewport/);
+  assert.match(planPrompt, /present above-the-fold placement as a universal requirement/);
+  assert.match(planPrompt, /prescribe a fixed experiment duration as a proven threshold/);
+  assert.match(planPrompt, /Do not give conflicting thresholds for the same concept/);
   const schema = articlePlanResponseSchema(format) as any;
   assert.deepEqual(schema.properties.sections.required, ['introduction', 'central_idea', 'practical_action', 'next_step']);
   const plan = {
@@ -38,11 +49,64 @@ test('generation uses the selected JSON format and its editorial fields only as 
   assert.match(sectionPrompt, /Do not include the article title, the rendered section heading, another section heading/);
   assert.match(sectionPrompt, /do not manufacture numeric thresholds or universal success figures/);
   assert.match(sectionPrompt, /evaluate against their own baseline/);
+  assert.match(sectionPrompt, /If a precise claim cannot be supported from the supplied article context, omit it or replace it/);
   assert.doesNotMatch(sectionPrompt, /This is the final section/);
   assert.match(promptForArticleSection(row, format, plan, 3), /This is the final section\. Synthesize the article and give one useful next action/);
   assert.match(promptForArticleSection(row, format, plan, 3), /Do not introduce another detailed checklist, procedure, or new body topic/);
   assert.deepEqual(articleSectionResponseSchema.required, ['content']);
   assert.deepEqual(parseArticleSection('{"content":"A paragraph.\\n\\n- A useful item"}'), { content: 'A paragraph.\n\n- A useful item' });
+
+  const repairPrompt = promptForArticleSectionRepair(row, format, plan, 1, 'This guarantees higher rankings.', [{
+    issue_id: 'seo-certainty',
+    section_index: 2,
+    category: 'unsupported_certainty',
+    quoted_text: 'guarantees higher rankings',
+    problem: 'The outcome is presented as guaranteed.',
+    required_change: 'Explain that search visibility depends on multiple factors.',
+    acceptance_condition: 'The repaired section makes no guaranteed ranking claim.'
+  }]);
+  assert.match(repairPrompt, /Mandatory reviewer repair list/);
+  assert.match(repairPrompt, /Repair ID: seo-certainty/);
+  assert.match(repairPrompt, /preserve accurate, useful material/i);
+  assert.match(promptForArticleSectionRepair(row, format, plan, 1, 'Bad section.', [{
+    issue_id: 'seo-certainty',
+    section_index: 2,
+    category: 'unsupported_certainty',
+    quoted_text: 'Bad section.',
+    problem: 'The issue survived repair.',
+    required_change: 'Replace the unsupported claim.',
+    acceptance_condition: 'No unsupported claim remains.'
+  }], 'replace'), /Replace the section body completely/);
+  assert.match(promptForArticleSectionRepair(row, format, plan, 1, 'Bad section.', [{
+    issue_id: 'seo-certainty',
+    section_index: 2,
+    category: 'unsupported_certainty',
+    quoted_text: 'Bad section.',
+    problem: 'The issue survived repair.',
+    required_change: 'Replace the unsupported claim.',
+    acceptance_condition: 'No unsupported claim remains.'
+  }], 'reinforced'), /materially stronger correction/);
+  assert.match(promptForArticleSectionRepair(row, format, plan, 1, 'Bad section.', [{
+    issue_id: 'audience-claim',
+    section_index: 2,
+    category: 'unsupported_certainty',
+    quoted_text: 'Most visitors use phones.',
+    problem: 'The audience distribution is unsupported.',
+    required_change: 'Qualify the claim.',
+    acceptance_condition: 'Use many or often instead.'
+  }]), /remove the distribution claim or replace it with a reader-specific analytics or testing decision/);
+
+  const planRepairPrompt = promptForArticlePlanRepair(row, format, plan, [{
+    issue_id: 'excerpt-1',
+    section_index: 0,
+    category: 'unsupported_certainty',
+    quoted_text: 'dependable WordPress performance',
+    problem: 'The excerpt promises an outcome without context.',
+    required_change: 'Describe the article guidance without promising an outcome.',
+    acceptance_condition: 'The excerpt contains no unsupported outcome claim.'
+  }]);
+  assert.match(planRepairPrompt, /Mandatory reviewer repair list for the article plan/);
+  assert.match(planRepairPrompt, /exactly these keys in order: introduction, central_idea, practical_action, next_step/);
 });
 
 test('final Markdown preserves the format section count without policing editorial guidance, words, or paragraphs', async () => {

@@ -9,7 +9,7 @@ export const config = (overrides: Partial<Record<string, string>> = {}) => {
   const base = get('LMSTUDIO_BASE_URL') ?? 'http://192.168.1.35:1234';
   if (!/^https?:\/\//.test(base)) throw new Error('LMSTUDIO_BASE_URL must be an HTTP(S) URL');
   return {
-    lm: { baseUrl: base.replace(/\/$/, ''), token: get('LMSTUDIO_API_TOKEN') ?? '', primaryModel: get('LMSTUDIO_PRIMARY_MODEL') ?? 'openai/gpt-oss-20b', allowFallbackModels: bool('LMSTUDIO_ALLOW_FALLBACK_MODELS'), timeoutMs: number('LMSTUDIO_TIMEOUT_MS', 300000), maxTokens: number('LMSTUDIO_MAX_TOKENS', 6000), retryLimit: number('LMSTUDIO_RETRY_LIMIT', 3) },
+    lm: { baseUrl: base.replace(/\/$/, ''), token: get('LMSTUDIO_API_TOKEN') ?? '', primaryModel: get('LMSTUDIO_PRIMARY_MODEL') ?? 'openai/gpt-oss-20b', timeoutMs: number('LMSTUDIO_TIMEOUT_MS', 300000), maxTokens: number('LMSTUDIO_MAX_TOKENS', 6000), retryLimit: number('LMSTUDIO_RETRY_LIMIT', 3) },
     trackerPath: path.resolve(get('TRACKER_PATH') ?? 'manual-files/wordpress-blog-content-tracker.xlsx'),
     formatsDir: path.resolve(get('BLOG_FORMATS_DIR') ?? 'config/blog-formats'),
     checkpointsDir: path.resolve(get('CHECKPOINTS_DIR') ?? 'data/checkpoints'),

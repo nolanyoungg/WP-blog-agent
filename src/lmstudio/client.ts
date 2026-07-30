@@ -2,8 +2,12 @@ import type { RunLog } from '../log.js';
 
 export type NativeModel = { key: string; type: 'llm' | 'embedding'; loaded_instances?: Array<{ id: string }> };
 export type LlmCandidate = { key: string; instanceId?: string; loaded: boolean };
+export interface StructuredGenerationOptions {
+  instructions?: string;
+  operation?: 'write' | 'review' | 'repair';
+}
 
-export const selectLlmCandidates = (primaryModel: string, models: NativeModel[], allowFallbackModels = false): LlmCandidate[] => {
+export const selectLlmCandidates = (primaryModel: string, models: NativeModel[]): LlmCandidate[] => {
   const grouped = new Map<string, LlmCandidate>();
   for (const model of models) {
     if (model.type !== 'llm' || !model.key) continue;
@@ -12,10 +16,7 @@ export const selectLlmCandidates = (primaryModel: string, models: NativeModel[],
     if (!existing || (!existing.loaded && Boolean(loadedInstance))) grouped.set(model.key, { key: model.key, instanceId: loadedInstance, loaded: Boolean(loadedInstance) });
   }
   const primary = grouped.get(primaryModel);
-  if (!allowFallbackModels) return primary ? [primary] : [];
-  const loadedFallbacks = [...grouped.values()].filter(candidate => candidate.key !== primaryModel && candidate.loaded);
-  const unloadedFallbacks = [...grouped.values()].filter(candidate => candidate.key !== primaryModel && !candidate.loaded);
-  return [...(primary ? [primary] : []), ...loadedFallbacks, ...unloadedFallbacks];
+  return primary ? [primary] : [];
 };
 
 const textFrom = (body: any) => body?.choices?.[0]?.message?.content ?? body?.output?.find((x: any) => x.type === 'message')?.content ?? body?.output_text;
@@ -35,7 +36,7 @@ Preserve useful content and correct only the structural or JSON problem.${repeat
 Return the complete corrected structured result.`;
 
 export class LMStudioClient {
-  constructor(private readonly settings: { baseUrl: string; token: string; primaryModel: string; allowFallbackModels: boolean; timeoutMs: number; maxTokens: number; retryLimit: number }, private readonly log: RunLog) {}
+  constructor(private readonly settings: { baseUrl: string; token: string; primaryModel: string; timeoutMs: number; maxTokens: number; retryLimit: number }, private readonly log: RunLog) {}
 
   private async request(path: string, init: RequestInit = {}) {
     const controller = new AbortController();
@@ -65,9 +66,9 @@ export class LMStudioClient {
     return body.instance_id ?? model;
   }
 
-  private async chatCompletion(model: string, prompt: string, schema: Record<string, unknown>, correction?: string, previousJson?: string, repeated = false) {
+  private async chatCompletion(model: string, prompt: string, schema: Record<string, unknown>, instructions: string, correction?: string, previousJson?: string, repeated = false) {
     const messages = [
-      { role: 'system', content: 'You write accurate, original WordPress blog articles as structured JSON.' },
+      { role: 'system', content: instructions },
       { role: 'user', content: prompt },
       ...(correction ? [{ role: 'user', content: structuredRepairInstructions(correction, previousJson, repeated) }] : [])
     ];
@@ -79,14 +80,14 @@ export class LMStudioClient {
     return text.trim();
   }
 
-  private async responsesCompletion(model: string, prompt: string, schema: Record<string, unknown>, correction?: string, previousJson?: string, repeated = false) {
+  private async responsesCompletion(model: string, prompt: string, schema: Record<string, unknown>, instructions: string, correction?: string, previousJson?: string, repeated = false) {
     const functionName = 'submit_structured_result';
     const input = `${prompt}${correction ? `\n\n${structuredRepairInstructions(correction, previousJson, repeated)}` : ''}\n\nCall ${functionName} exactly once with the complete result.`;
     const body = await this.request('/v1/responses', {
       method: 'POST',
       body: JSON.stringify({
         model,
-        instructions: 'Write an accurate, original WordPress blog article.',
+        instructions,
         input,
         reasoning: { effort: 'low' },
         temperature: 0.2,
@@ -94,7 +95,7 @@ export class LMStudioClient {
         tools: [{
           type: 'function',
           name: functionName,
-          description: 'Submit the structured WordPress generation result.',
+          description: 'Submit the complete schema-constrained result for the current task.',
           parameters: schema,
           strict: true
         }],
@@ -106,38 +107,43 @@ export class LMStudioClient {
     return structuredArgumentsFromResponses(body, functionName);
   }
 
-  private completion(model: string, modelKey: string, prompt: string, schema: Record<string, unknown>, correction?: string, previousJson?: string, repeated = false) {
+  private completion(model: string, modelKey: string, prompt: string, schema: Record<string, unknown>, instructions: string, correction?: string, previousJson?: string, repeated = false) {
     return modelKey.toLowerCase().includes('gpt-oss')
-      ? this.responsesCompletion(model, prompt, schema, correction, previousJson, repeated)
-      : this.chatCompletion(model, prompt, schema, correction, previousJson, repeated);
+      ? this.responsesCompletion(model, prompt, schema, instructions, correction, previousJson, repeated)
+      : this.chatCompletion(model, prompt, schema, instructions, correction, previousJson, repeated);
   }
 
   async generateStructured<T>(
     prompt: string,
     schema: Record<string, unknown>,
-    parseAndValidate: (text: string) => T
+    parseAndValidate: (text: string) => T,
+    options: StructuredGenerationOptions = {}
   ): Promise<{ value: T; model: string }> {
+    const instructions = options.instructions ?? 'Write an accurate, original WordPress blog article as structured JSON.';
+    const operation = options.operation ?? 'write';
     await this.health();
-    const candidates = selectLlmCandidates(this.settings.primaryModel, await this.nativeModels(), this.settings.allowFallbackModels);
+    const candidates = selectLlmCandidates(this.settings.primaryModel, await this.nativeModels());
     let last: unknown;
     let lastCorrection: string | undefined;
     let previousText: string | undefined;
+    let lastResultRepeated = false;
     for (const candidate of candidates) {
       try {
         const model = candidate.loaded ? (candidate.instanceId ?? candidate.key) : await this.load(candidate.key);
         for (let attempt = 0; attempt <= this.settings.retryLimit; attempt++) {
           let text = '';
           try {
-            text = await this.completion(model, candidate.key, prompt, schema, lastCorrection, previousText, false);
+            text = await this.completion(model, candidate.key, prompt, schema, instructions, lastCorrection, previousText, lastResultRepeated);
             const value = parseAndValidate(text);
-            await this.log.write('lmstudio.generation_succeeded', { model, attempt });
+            await this.log.write('lmstudio.generation_succeeded', { model, attempt, operation });
             return { value, model };
           } catch (error) {
             last = error;
             const repeatedCandidate = Boolean(text && previousText && text === previousText);
             if (text) previousText = text;
+            lastResultRepeated = repeatedCandidate;
             lastCorrection = String(error).slice(0, 1000);
-            await this.log.write('lmstudio.generation_failed', { model, attempt, error: String(error), repeated_candidate: repeatedCandidate });
+            await this.log.write('lmstudio.generation_failed', { model, attempt, operation, error: String(error), repeated_candidate: repeatedCandidate });
           }
         }
       } catch (error) {
