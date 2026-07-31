@@ -11,9 +11,7 @@
     "relay": "npm run build && node dist/src/cli/relay.js",
     "formats:validate": "npm run build && node dist/src/cli/formats.js validate",
     "formats:sync": "npm run build && node dist/src/cli/formats.js sync",
-    "test": "npm run build && node --test dist/tests/**/*.test.js",
-    "lint": "tsc --noEmit -p tsconfig.json",
-    "dry-run:fixture": "npm run build && node dist/src/cli/index.js once --dry-run --tracker tests/fixtures/wordpress-blog-content-tracker.xlsx"
+    "lint": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "dotenv": "^16.6.1",

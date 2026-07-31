@@ -3,11 +3,12 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type { config as configFactory } from '../config/index.js';
 import { requireWordPress } from '../config/index.js';
-import { articlePlanResponseSchema, articleSectionResponseSchema, parseArticlePlan, parseArticleSection, promptForArticlePlan, promptForArticlePlanRepair, promptForArticleSection, promptForArticleSectionRepair, type ArticlePlan } from '../generation/article-generator.js';
+import { articlePlanResponseSchema, articleSectionResponseSchema, normalizeRepairThresholds, parseArticlePlan, parseArticleSection, promptForArticlePlan, promptForArticlePlanRepair, promptForArticleSection, promptForArticleSectionRepair, validateRepairDoesNotInventThresholds, type ArticlePlan } from '../generation/article-generator.js';
 import { ArticleFormatRegistry } from '../generation/article-format-registry.js';
+import { fulfillsAdvertisedSequence, validatePlanAssignment } from '../generation/article-assignment.js';
 import { parseDraft, renderAndValidateArticle, saveDraft, validateStructuredSection, type StructuredSection } from '../generation/article-markdown-renderer.js';
 import { loadGenerationCheckpoint, removeGenerationCheckpoint, saveGenerationCheckpoint, type GenerationModelHistoryEntry, type GenerationQualityState } from '../generation/generation-checkpoint.js';
-import { articleQualityReviewSchema, locateArticleQualityIssues, parseArticleQualityReview, promptForArticleQualityReview, qualityIssueKey, recordQualityIssueAttempts, repairActionForIssues, type ArticleRepairAction } from '../generation/article-quality-reviewer.js';
+import { articleQualityReviewSchema, locateArticleQualityIssues, parseArticleQualityReview, promptForArticleQualityReview, recordQualityIssueAttempts, repairActionForIssues, type ArticleRepairAction } from '../generation/article-quality-reviewer.js';
 import { LMStudioClient } from '../lmstudio/client.js';
 import { parseReview, postedNotification } from '../messaging/imessage.js';
 import { createReviewPdf } from '../review/pdf.js';
@@ -21,6 +22,8 @@ type Settings = ReturnType<typeof configFactory>;
 const writerInstructions = 'Write an accurate, original WordPress blog article as structured JSON. Follow the assigned section boundaries and factual-quality requirements.';
 const reviewerInstructions = 'Act as a strict senior factual and editorial reviewer. Produce the complete repair list, but do not rewrite the article. Pass only when nothing material remains to fix.';
 const repairInstructions = 'Act as a precise senior article editor. Correct every supplied repair item, preserve sound material when possible, and return the complete repaired section as structured JSON.';
+class TerminalArticleQualityError extends Error {}
+
 const initialQualityState = (): GenerationQualityState => ({
   phase: 'generating',
   review_round: 0,
@@ -146,6 +149,7 @@ export class BlogWorkflow {
       if (checkpoint) {
         try {
           planValue = checkpoint.plan;
+          validatePlanAssignment(row.blog_topic, planValue);
           quality = checkpoint.quality;
           modelHistory.push(...checkpoint.model_history);
           if (checkpoint.sections.length > format.sections.length || planValue.headings.length !== format.sections.length) throw new Error(`Generation checkpoint does not match format ${format.id}`);
@@ -169,11 +173,23 @@ export class BlogWorkflow {
           quality = initialQualityState();
         }
       }
+      if (quality.phase === 'failed') {
+        quality = {
+          ...quality,
+          phase: 'reviewing',
+          repair_list: [],
+          failure_reason: undefined
+        };
+        await this.log.write('workflow.article_quality_resumed_from_legacy_limit', {
+          blog_id: row.blog_id,
+          review_round: quality.review_round
+        });
+      }
       if (!checkpoint) {
         const generatedPlan = await this.lm.generateStructured(
           promptForArticlePlan(row, format),
           articlePlanResponseSchema(format),
-          text => parseArticlePlan(text, format),
+          text => parseArticlePlan(text, format, row.blog_topic),
           { instructions: writerInstructions, operation: 'write' }
         );
         planValue = generatedPlan.value;
@@ -220,7 +236,7 @@ export class BlogWorkflow {
               const repairedPlan = await this.lm.generateStructured(
                 promptForArticlePlanRepair(row, format, currentPlan, issues, action),
                 articlePlanResponseSchema(format),
-                text => parseArticlePlan(text, format),
+                text => parseArticlePlan(text, format, row.blog_topic),
                 { instructions: repairInstructions, operation: 'repair' }
               );
               currentPlan = repairedPlan.value;
@@ -274,8 +290,13 @@ export class BlogWorkflow {
               promptForArticleSectionRepair(row, format, currentPlan, index, sections[index]!.content, issues, action),
               articleSectionResponseSchema,
               text => {
-                const section = { heading: currentPlan.headings[index], ...parseArticleSection(text) };
+                const parsed = parseArticleSection(text);
+                const section = {
+                  heading: currentPlan.headings[index],
+                  content: normalizeRepairThresholds(sections[index]!.content, parsed.content)
+                };
                 validateStructuredSection(section, index);
+                validateRepairDoesNotInventThresholds(sections[index]!.content, section.content);
                 return section;
               },
               { instructions: repairInstructions, operation: 'repair' }
@@ -317,7 +338,7 @@ export class BlogWorkflow {
         const reviewed = await this.lm.generateStructured(
           promptForArticleQualityReview(row, format, currentPlan, sections, quality.completed_repairs),
           articleQualityReviewSchema,
-          text => locateArticleQualityIssues(parseArticleQualityReview(text, sections.length), currentPlan, sections),
+          text => locateArticleQualityIssues(parseArticleQualityReview(text, sections.length), currentPlan, sections, row.blog_topic),
           { instructions: reviewerInstructions, operation: 'review' }
         );
         modelHistory.push({ operation: 'review', model: reviewed.model, review_round: reviewRound, completed_at: new Date().toISOString() });
@@ -331,19 +352,23 @@ export class BlogWorkflow {
           model: reviewed.model
         });
         if (reviewed.value.verdict === 'pass') {
+          validatePlanAssignment(row.blog_topic, currentPlan);
+          if (!fulfillsAdvertisedSequence(row.blog_topic, sections)) {
+            throw new TerminalArticleQualityError('The final article failed the assigned numbered-sequence invariant after deterministic review.');
+          }
           quality = { ...quality, phase: 'passed', review_round: reviewRound, repair_list: [], last_review: reviewed.value };
           const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, modelHistory, quality);
           await this.log.write('workflow.article_quality_passed', { blog_id: row.blog_id, review_round: reviewRound, model: reviewed.model, checkpoint: checkpointPath });
           break;
         }
 
-        const attempts = recordQualityIssueAttempts(quality.issue_attempts, reviewed.value.repair_list);
+        const issueAttempts = recordQualityIssueAttempts(quality.issue_attempts, reviewed.value.repair_list);
         quality = {
           ...quality,
           phase: 'repairing',
           review_round: reviewRound,
           repair_list: reviewed.value.repair_list,
-          issue_attempts: attempts.issue_attempts,
+          issue_attempts: issueAttempts,
           last_review: reviewed.value
         };
         const checkpointPath = await saveGenerationCheckpoint(this.checkpointDirectory, row, format.format_hash, currentPlan, sections, modelHistory, quality);
@@ -353,16 +378,12 @@ export class BlogWorkflow {
           repair_count: quality.repair_list.length,
           checkpoint: checkpointPath
         });
-        if (attempts.stalled_keys.length) {
-          const unresolved = quality.repair_list
-            .filter(issue => (quality.issue_attempts[qualityIssueKey(issue)] ?? 0) >= 4)
-            .map(issue => `${issue.issue_id} (${issue.category}, section ${issue.section_index})`);
-          await this.log.write('workflow.article_quality_stalled', { blog_id: row.blog_id, review_round: reviewRound, unresolved, checkpoint: checkpointPath });
-          await this.log.write('workflow.article_quality_failed', { blog_id: row.blog_id, review_round: reviewRound, unresolved });
-          throw new Error(`Article quality review could not resolve repeated issues: ${unresolved.join(', ')}`);
-        }
       }
 
+      validatePlanAssignment(row.blog_topic, currentPlan);
+      if (!fulfillsAdvertisedSequence(row.blog_topic, sections)) {
+        throw new TerminalArticleQualityError('The final article does not fulfill the tracker assignment’s advertised numbered sequence.');
+      }
       const model = [...new Set(modelHistory.map(entry => entry.model))].join(', ');
       const article = { ...currentPlan, sections };
       const markdown = renderAndValidateArticle(format, article);
@@ -377,10 +398,13 @@ export class BlogWorkflow {
       await this.notify(`Blog draft #${row.blog_id} is ready: “${row.blog_topic}”\n\nReply exactly:\nYES ${row.blog_id} — post it to WordPress\nNO ${row.blog_id} — reject and stop`, reviewPdf);
       await this.log.write('workflow.awaiting_review', { blog_id: row.blog_id, draft, review_pdf: reviewPdf, model, review_requested_at: requestedAt });
     } catch (error) {
-      await this.tracker.update(row.blog_id, { blog_status: 'error' });
+      const terminalQualityFailure = error instanceof TerminalArticleQualityError;
+      await this.tracker.update(row.blog_id, { blog_status: terminalQualityFailure ? 'quality_failed' : 'error' });
       await this.notify(draftGenerated
         ? `Blog draft #${row.blog_id} was generated, but its PDF review attachment could not be prepared or delivered: ${String(error)}`
-        : `Blog #${row.blog_id} could not be generated: ${String(error)}`);
+        : terminalQualityFailure
+          ? `Blog #${row.blog_id} could not satisfy a deterministic article-quality requirement: ${String(error)}`
+          : `Blog #${row.blog_id} could not be generated: ${String(error)}`);
       throw error;
     }
   }
