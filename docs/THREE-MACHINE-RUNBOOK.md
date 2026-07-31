@@ -237,7 +237,7 @@ Run deterministic checks first:
 
 ~~~
 npm run lint
-npm test
+npm run formats:validate
 ~~~
 
 Verify the Work Mac model API without displaying its token:

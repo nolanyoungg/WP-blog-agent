@@ -18,7 +18,11 @@ export const renderWordPressContent = (body: string, title: string) => {
   tokens.forEach(token => {
     if (token.type === 'heading' && token.depth === 1) token.depth = 2;
   });
-  return marked.parser(tokens);
+  return marked.parser(tokens)
+    .replace(/<table>/g, '<figure class="wp-block-table"><table style="border-collapse:collapse;width:100%">')
+    .replace(/<\/table>/g, '</table></figure>')
+    .replace(/<th>/g, '<th style="border:1px solid #cbd5e1;padding:0.65em;text-align:left;background-color:#f1f5f9">')
+    .replace(/<td>/g, '<td style="border:1px solid #cbd5e1;padding:0.65em;vertical-align:top">');
 };
 
 export class WordPressClient {

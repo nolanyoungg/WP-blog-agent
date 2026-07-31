@@ -5,7 +5,7 @@ import type { ArticlePlan } from './article-generator.js';
 import type { StructuredSection } from './article-markdown-renderer.js';
 import type { ArticleQualityIssue, ArticleQualityReview, CompletedArticleRepair } from './article-quality-reviewer.js';
 
-export type GenerationQualityPhase = 'generating' | 'reviewing' | 'repairing' | 'passed';
+export type GenerationQualityPhase = 'generating' | 'reviewing' | 'repairing' | 'passed' | 'failed';
 
 export interface GenerationModelHistoryEntry {
   operation: 'write' | 'review' | 'repair';
@@ -22,10 +22,11 @@ export interface GenerationQualityState {
   completed_repairs: CompletedArticleRepair[];
   issue_attempts: Record<string, number>;
   last_review?: ArticleQualityReview;
+  failure_reason?: string;
 }
 
 export interface GenerationCheckpoint {
-  version: 6;
+  version: 7;
   blog_id: string;
   blog_topic: string;
   blog_type: string;
@@ -39,7 +40,7 @@ export interface GenerationCheckpoint {
 
 const filename = (directory: string, blogId: string) => path.join(directory, `blog-${String(blogId).padStart(4, '0')}.json`);
 
-const matches = (checkpoint: GenerationCheckpoint, row: BlogRow, formatHash: string) => checkpoint.version === 6
+const matches = (checkpoint: GenerationCheckpoint, row: BlogRow, formatHash: string) => checkpoint.version === 7
   && checkpoint.blog_id === row.blog_id
   && checkpoint.blog_topic === row.blog_topic
   && checkpoint.blog_type === row.blog_type
@@ -52,7 +53,7 @@ export const loadGenerationCheckpoint = async (directory: string, row: BlogRow, 
       || !parsed.quality || !Number.isSafeInteger(parsed.quality.review_round) || !Array.isArray(parsed.quality.repair_list)
       || !Array.isArray(parsed.quality.completed_repairs) || !parsed.quality.issue_attempts
       || typeof parsed.quality.issue_attempts !== 'object'
-      || !['generating', 'reviewing', 'repairing', 'passed'].includes(parsed.quality.phase)) return undefined;
+      || !['generating', 'reviewing', 'repairing', 'passed', 'failed'].includes(parsed.quality.phase)) return undefined;
     return parsed;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
@@ -74,7 +75,7 @@ export const saveGenerationCheckpoint = async (
   const destination = filename(directory, row.blog_id);
   const temporary = `${destination}.${process.pid}.tmp`;
   const checkpoint: GenerationCheckpoint = {
-    version: 6,
+    version: 7,
     blog_id: row.blog_id,
     blog_topic: row.blog_topic,
     blog_type: row.blog_type,

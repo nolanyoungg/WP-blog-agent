@@ -1,4 +1,4 @@
-export type BlogStatus = 'pending' | 'generating' | 'awaiting_review' | 'approved' | 'rejected' | 'posting' | 'posted' | 'error';
+export type BlogStatus = 'pending' | 'generating' | 'awaiting_review' | 'approved' | 'rejected' | 'posting' | 'posted' | 'quality_failed' | 'error';
 export type ReviewStatus = 'pending' | 'approved' | 'rejected';
 export type BlogFormatId = string;
 

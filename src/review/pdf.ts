@@ -19,7 +19,7 @@ export const printable = (value: string) => value
   .replaceAll('\u2011', '-')
   .replaceAll('\u2012', '-')
   .replaceAll('\u2013', '-')
-  .replaceAll('\u2014', '-')
+  .replace(/\s*\u2014\s*/g, ' - ')
   .replaceAll('\u202f', ' ')
   .replaceAll('\u2018', "'")
   .replaceAll('\u2019', "'")
@@ -62,28 +62,33 @@ const roomForFollowingBlock = (document: PDFKit.PDFDocument, tokens: Token[], st
   return 0;
 };
 
-const renderList = (document: PDFKit.PDFDocument, token: Tokens.List) => {
+const renderList = (document: PDFKit.PDFDocument, token: Tokens.List, depth = 0) => {
   token.items.forEach((item, index) => {
     const marker = token.ordered ? `${Number(token.start || 1) + index}.` : '\u2022';
-    const text = inlineText(item.tokens);
-    const left = document.page.margins.left;
+    const directTokens = item.tokens.filter(itemToken => itemToken.type !== 'list');
+    const nestedLists = item.tokens.filter((itemToken): itemToken is Tokens.List => itemToken.type === 'list');
+    const text = inlineText(directTokens).trim();
+    const left = document.page.margins.left + depth * 22;
     const markerLeft = left + 6;
     const textLeft = left + 28;
     const textWidth = document.page.width - textLeft - document.page.margins.right;
-    document.font('Helvetica').fontSize(10.5);
-    const height = Math.max(document.currentLineHeight(), document.heightOfString(text, { width: textWidth, lineGap: 2 }));
-    ensureRoom(document, height + 7);
-    const top = document.y;
-    document.font('Helvetica-Bold').fontSize(10.5).fillColor(colors.accent).text(marker, markerLeft, top, { width: 20, lineBreak: false });
-    document.font('Helvetica').fontSize(10.5).fillColor(colors.ink).text(text, textLeft, top, {
-      width: textWidth,
-      lineGap: 2
-    });
-    document.x = left;
-    document.y = top + height + 4;
+    if (text) {
+      document.font('Helvetica').fontSize(10.5);
+      const height = Math.max(document.currentLineHeight(), document.heightOfString(text, { width: textWidth, lineGap: 2 }));
+      ensureRoom(document, height + 7);
+      const top = document.y;
+      document.font('Helvetica-Bold').fontSize(10.5).fillColor(colors.accent).text(marker, markerLeft, top, { width: 20, lineBreak: false });
+      document.font('Helvetica').fontSize(10.5).fillColor(colors.ink).text(text, textLeft, top, {
+        width: textWidth,
+        lineGap: 2
+      });
+      document.x = left;
+      document.y = top + height + 4;
+    }
+    for (const nestedList of nestedLists) renderList(document, nestedList, depth + 1);
   });
   document.x = document.page.margins.left;
-  document.moveDown(0.3);
+  if (depth === 0) document.moveDown(0.3);
 };
 
 export const renderTable = (document: PDFKit.PDFDocument, token: Tokens.Table) => {
