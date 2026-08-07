@@ -2,10 +2,4 @@ node_modules/
 dist/
 .DS_Store
 .env
-data/drafts/
-data/checkpoints/
-data/runs/
-manual-files/*.xlsx
-!manual-files/wordpress-blog-content-tracker.xlsx
-tests/fixtures/*.xlsx
 *.lock
